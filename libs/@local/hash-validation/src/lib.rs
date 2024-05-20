@@ -150,6 +150,12 @@ pub trait EntityProvider {
         &self,
         entity_id: EntityId,
     ) -> impl Future<Output = Result<impl Borrow<Entity> + Send + Sync, Report<impl Context>>> + Send;
+
+    fn count_outgoing_links(
+        &self,
+        entity_id: EntityId,
+        link_type_id: &VersionedUrl,
+    ) -> impl Future<Output = Result<usize, Report<impl Context>>> + Send;
 }
 
 #[cfg(test)]
@@ -227,6 +233,25 @@ mod tests {
             self.entities
                 .get(&entity_id)
                 .ok_or_else(|| Report::new(InvalidEntity { id: entity_id }))
+        }
+
+        #[expect(refining_impl_trait)]
+        async fn count_outgoing_links(
+            &self,
+            entity_id: EntityId,
+            link_type_id: &VersionedUrl,
+        ) -> Result<usize, Report<InvalidEntity>> {
+            Ok(self
+                .entities
+                .iter()
+                .filter(|(_, entity)| {
+                    entity.metadata.entity_type_ids.contains(link_type_id)
+                        && entity
+                            .link_data
+                            .as_ref()
+                            .is_some_and(|data| data.left_entity_id == entity_id)
+                })
+                .count())
         }
     }
 

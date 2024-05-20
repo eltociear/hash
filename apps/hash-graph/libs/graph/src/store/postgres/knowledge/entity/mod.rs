@@ -953,6 +953,19 @@ where
                     status = Err(error);
                 }
             }
+
+            if let Some(metadata) = params.metadata.as_deref() {
+                if let Err(error) = metadata
+                    .validate(&schema, params.components, &validator_provider)
+                    .await
+                {
+                    if let Err(ref mut report) = status {
+                        report.extend_one(error);
+                    } else {
+                        status = Err(error);
+                    }
+                }
+            }
         }
 
         status

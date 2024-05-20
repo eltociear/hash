@@ -19,7 +19,10 @@ use crate::{
         query::{OntologyQueryPath, ParameterType, QueryPath},
         QueryRecord, SubgraphRecord,
     },
-    subgraph::{edges::SharedEdgeKind, identifier::VertexId},
+    subgraph::{
+        edges::{EdgeDirection, KnowledgeGraphEdgeKind, SharedEdgeKind},
+        identifier::VertexId,
+    },
 };
 
 /// A set of conditions used for queries.
@@ -118,6 +121,42 @@ impl<'p> Filter<'p, Entity> {
         } else {
             Self::All(vec![owned_by_id_filter, entity_uuid_filter])
         }
+    }
+
+    #[must_use]
+    pub fn for_outgoing_links(entity_id: EntityId, link_type_id: &VersionedUrl) -> Self {
+        Self::All(vec![
+            Self::Equal(
+                Some(FilterExpression::Path(EntityQueryPath::EntityEdge {
+                    edge_kind: KnowledgeGraphEdgeKind::HasLeftEntity,
+                    path: Box::new(EntityQueryPath::OwnedById),
+                    direction: EdgeDirection::Outgoing,
+                })),
+                Some(FilterExpression::Parameter(Parameter::Uuid(
+                    entity_id.owned_by_id.into_uuid(),
+                ))),
+            ),
+            Self::Equal(
+                Some(FilterExpression::Path(EntityQueryPath::EntityEdge {
+                    edge_kind: KnowledgeGraphEdgeKind::HasLeftEntity,
+                    path: Box::new(EntityQueryPath::Uuid),
+                    direction: EdgeDirection::Outgoing,
+                })),
+                Some(FilterExpression::Parameter(Parameter::Uuid(
+                    entity_id.entity_uuid.into_uuid(),
+                ))),
+            ),
+            Self::Equal(
+                Some(FilterExpression::Path(EntityQueryPath::EntityTypeEdge {
+                    edge_kind: SharedEdgeKind::IsOfType,
+                    path: EntityTypeQueryPath::VersionedUrl,
+                    inheritance_depth: None,
+                })),
+                Some(FilterExpression::Parameter(Parameter::Text(Cow::Owned(
+                    link_type_id.to_string(),
+                )))),
+            ),
+        ])
     }
 
     #[must_use]

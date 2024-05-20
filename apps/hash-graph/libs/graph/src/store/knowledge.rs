@@ -208,6 +208,9 @@ pub struct ValidateEntityParams<'a> {
     pub entity_types: EntityValidationType<'a>,
     #[serde(borrow)]
     pub properties: Cow<'a, PropertyObject>,
+    #[serde(borrow, default)]
+    #[cfg_attr(feature = "utoipa", schema(nullable = false))]
+    pub metadata: Option<Cow<'a, EntityMetadata>>,
     #[cfg_attr(feature = "utoipa", schema(nullable = false))]
     #[serde(borrow, default, skip_serializing_if = "PropertyMetadataMap::is_empty")]
     pub property_metadata: Cow<'a, PropertyMetadataMap<'a>>,

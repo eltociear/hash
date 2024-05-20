@@ -75,22 +75,6 @@ export const createLinkEntity: ImpureGraphFunction<
     entityTypeId: linkEntityTypeId,
   });
 
-  /**
-   * @todo: remove this check once it is made in the Graph API
-   * @see https://linear.app/hash/issue/H-972/validate-links-when-creatingupdating-an-entity-or-links-tofrom-an
-   */
-  if (
-    !(await isEntityTypeLinkEntityType(
-      context,
-      authentication,
-      linkEntityType.schema,
-    ))
-  ) {
-    throw new Error(
-      `Entity type with ID "${linkEntityType.schema.$id}" is not a link entity type.`,
-    );
-  }
-
   const linkData: LinkData = {
     leftEntityId,
     rightEntityId,

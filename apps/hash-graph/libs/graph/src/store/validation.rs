@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    hash::Hash,
+    sync::Arc,
+};
 
 use authorization::{
     backend::PermissionAssertion,
@@ -25,7 +30,7 @@ use type_system::{
 use validation::{EntityProvider, EntityTypeProvider, OntologyTypeProvider};
 
 use crate::{
-    store::{crud::Read, query::Filter, AsClient, PostgresStore, QueryError},
+    store::{crud::Read, query::Filter, AsClient, EntityStore, PostgresStore, QueryError},
     subgraph::temporal_axes::{
         PinnedTemporalAxisUnresolved, QueryTemporalAxesUnresolved, VariableTemporalAxisUnresolved,
     },
@@ -399,7 +404,7 @@ where
 
 impl<S, A> EntityProvider for StoreProvider<'_, S, A>
 where
-    S: Read<Entity>,
+    S: EntityStore,
     A: AuthorizationApi,
 {
     #[expect(refining_impl_trait)]
@@ -431,5 +436,49 @@ where
             )
             .await?;
         Ok(self.cache.entities.grant(entity_id, entity).await)
+    }
+
+    #[expect(refining_impl_trait)]
+    async fn count_outgoing_links(
+        &self,
+        entity_id: EntityId,
+        link_type_id: &VersionedUrl,
+    ) -> Result<usize, Report<QueryError>> {
+        let entity_ids = Read::<Entity>::read(
+            self,
+            &Filter::for_outgoing_links(entity_id, link_type_id),
+            Some(
+                &QueryTemporalAxesUnresolved::DecisionTime {
+                    pinned: PinnedTemporalAxisUnresolved::new(None),
+                    variable: VariableTemporalAxisUnresolved::new(None, None),
+                }
+                .resolve(),
+            ),
+            entity_id.draft_id.is_some(),
+        )
+        .await?
+        .map_ok(|entity| entity.metadata.record_id.entity_id)
+        .try_collect::<Vec<_>>()
+        .await?;
+
+        let permitted_ids = self
+            .authorization_api
+            .check_entities_permission(
+                actor_id,
+                EntityPermission::View,
+                entity_ids.iter().copied(),
+                Consistency::FullyConsistent,
+            )
+            .await
+            .change_context(QueryError)?
+            .0
+            .into_iter()
+            .filter_map(|(entity_id, has_permission)| has_permission.then_some(entity_id))
+            .collect::<HashSet<_>>();
+
+        Ok(entity_ids
+            .into_iter()
+            .filter(|id| permitted_ids.contains(&id.entity_uuid))
+            .count())
     }
 }

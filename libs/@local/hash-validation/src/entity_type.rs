@@ -63,16 +63,23 @@ where
         components: ValidateEntityComponents,
         provider: &'a P,
     ) -> Result<(), Report<EntityValidationError>> {
+        let mut status: Result<(), Report<EntityValidationError>> = Ok(());
+
         // TODO: Distinguish between format validation and content validation so it's possible
         //       to directly use the correct type.
         //   see https://linear.app/hash/issue/BP-33
-        Object::<_, 0>::new(self.properties.clone(), self.required.clone())
+        if let Err(error) = Object::<_, 0>::new(self.properties.clone(), self.required.clone())
             .expect("`Object` was already validated")
             .validate_value(value.properties(), components, provider)
             .await
             .change_context(EntityValidationError::InvalidProperties)
             .attach_lazy(|| Expected::EntityType(self.clone()))
             .attach_lazy(|| Actual::Properties(value.clone()))
+        {
+            extend_report!(status, error);
+        }
+
+        status
     }
 }
 
@@ -166,9 +173,11 @@ where
         if self.metadata.entity_type_ids.is_empty() {
             extend_report!(status, EntityValidationError::EmptyEntityTypes);
         }
+
         if let Err(error) = self.properties.validate(schema, components, provider).await {
             extend_report!(status, error);
         }
+
         if let Err(error) = self
             .link_data
             .as_ref()
@@ -177,6 +186,16 @@ where
         {
             extend_report!(status, error);
         }
+
+        if let Err(error) = self
+            .metadata
+            .properties
+            .validate(&self.properties, components, provider)
+            .await
+        {
+            extend_report!(status, error);
+        }
+
         if let Err(error) = self
             .metadata
             .properties
@@ -196,8 +215,6 @@ where
 {
     type Error = EntityValidationError;
 
-    // TODO: validate link data
-    //   see https://linear.app/hash/issue/H-972
     async fn validate_value<'a>(
         &'a self,
         link_data: &'a LinkData,
