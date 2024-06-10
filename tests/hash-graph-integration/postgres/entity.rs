@@ -230,6 +230,7 @@ async fn update() {
                     value: Property::Object(page_v2.clone()),
                     confidence: None,
                     provenance: PropertyProvenance::default(),
+                    data_type_id: None,
                 }],
                 entity_type_ids: vec![],
                 archived: None,

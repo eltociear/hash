@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use type_system::url::VersionedUrl;
 
 use crate::knowledge::{
     property::provenance::PropertyProvenance, Confidence, Property, PropertyPath,
@@ -17,6 +18,9 @@ pub enum PropertyPatchOperation {
         #[serde(default, skip_serializing_if = "PropertyProvenance::is_empty")]
         #[cfg_attr(feature = "utoipa", schema(nullable = false))]
         provenance: PropertyProvenance,
+        #[serde(default, skip_serializing_if = "PropertyProvenance::is_empty")]
+        #[cfg_attr(feature = "utoipa", schema(nullable = false))]
+        data_type_id: Option<VersionedUrl>,
     },
     Remove {
         path: PropertyPath<'static>,
@@ -30,5 +34,8 @@ pub enum PropertyPatchOperation {
         #[serde(default, skip_serializing_if = "PropertyProvenance::is_empty")]
         #[cfg_attr(feature = "utoipa", schema(nullable = false))]
         provenance: PropertyProvenance,
+        #[serde(default, skip_serializing_if = "PropertyProvenance::is_empty")]
+        #[cfg_attr(feature = "utoipa", schema(nullable = false))]
+        data_type_id: Option<VersionedUrl>,
     },
 }

@@ -6649,6 +6649,13 @@
               }
             ]
           },
+          "data_type_id": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VersionedUrl"
+              }
+            ]
+          },
           "provenance": {
             "$ref": "#/components/schemas/PropertyProvenance"
           }
@@ -6691,6 +6698,13 @@
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/Confidence"
+                  }
+                ]
+              },
+              "data_type_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/VersionedUrl"
                   }
                 ]
               },
@@ -6745,6 +6759,13 @@
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/Confidence"
+                  }
+                ]
+              },
+              "data_type_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/VersionedUrl"
                   }
                 ]
               },

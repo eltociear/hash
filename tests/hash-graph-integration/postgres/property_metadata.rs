@@ -143,6 +143,7 @@ fn property_metadata<'a>(
             PropertyMetadata {
                 confidence: Some(confidence(value)),
                 provenance,
+                data_type_id: None,
             },
         )
         .expect("could not set metadata");
@@ -307,6 +308,7 @@ async fn no_initial_metadata() {
                     value: Property::Value(json!("Alice")),
                     confidence: Some(confidence(0.5)),
                     provenance: property_provenance_a(),
+                    data_type_id: None,
                 }],
                 entity_type_ids: vec![],
                 archived: None,
@@ -392,6 +394,7 @@ async fn properties_add() {
                     value: Property::Value(json!(30)),
                     confidence: Some(confidence(0.5)),
                     provenance: property_provenance_a(),
+                    data_type_id: None,
                 }],
                 draft: None,
                 archived: None,
@@ -458,12 +461,14 @@ async fn properties_remove() {
                         value: Property::Value(json!({})),
                         confidence: Some(confidence(0.5)),
                         provenance: property_provenance_a(),
+                        data_type_id: None,
                     },
                     PropertyPatchOperation::Add {
                         path: film_path.clone(),
                         value: Property::Value(json!("Fight Club")),
                         confidence: Some(confidence(0.5)),
                         provenance: property_provenance_b(),
+                        data_type_id: None,
                     },
                 ],
                 draft: None,

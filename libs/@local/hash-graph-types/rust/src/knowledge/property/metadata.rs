@@ -11,7 +11,7 @@ use jsonptr::Pointer;
 use postgres_types::{FromSql, IsNull, Json, ToSql, Type};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
-use type_system::url::BaseUrl;
+use type_system::url::{BaseUrl, VersionedUrl};
 #[cfg(feature = "utoipa")]
 use utoipa::{
     openapi::{self, schema, Ref, Schema},
@@ -31,6 +31,9 @@ pub struct PropertyMetadata {
     pub confidence: Option<Confidence>,
     #[serde(default, skip_serializing_if = "PropertyProvenance::is_empty")]
     pub provenance: PropertyProvenance,
+    #[cfg_attr(feature = "utoipa", schema(nullable = false))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type_id: Option<VersionedUrl>,
 }
 
 #[cfg(feature = "postgres")]
@@ -507,6 +510,7 @@ impl PropertyMetadataMap {
                     value: _,
                     confidence,
                     provenance,
+                    data_type_id,
                 } => {
                     if path.is_empty() {
                         if confidence.is_some() || !provenance.is_empty() {
@@ -519,6 +523,7 @@ impl PropertyMetadataMap {
                             PropertyMetadata {
                                 confidence: *confidence,
                                 provenance: provenance.clone(),
+                                data_type_id: data_type_id.clone(),
                             },
                         )
                         .change_context(PatchError)?;
@@ -532,6 +537,7 @@ impl PropertyMetadataMap {
                     value: _,
                     confidence,
                     provenance,
+                    data_type_id,
                 } => {
                     if path.is_empty() {
                         if confidence.is_some() || !provenance.is_empty() {
@@ -544,6 +550,7 @@ impl PropertyMetadataMap {
                             PropertyMetadata {
                                 confidence: *confidence,
                                 provenance: provenance.clone(),
+                                data_type_id: data_type_id.clone(),
                             },
                         )
                         .change_context(PatchError)?;
@@ -658,6 +665,7 @@ impl PropertyObject {
                         value,
                         confidence: _,
                         provenance: _,
+                        data_type_id: _,
                     } => PatchOperation::Add(AddOperation {
                         path: Pointer::new(path),
                         value: serde_json::to_value(value).change_context(PatchError)?,
@@ -672,6 +680,7 @@ impl PropertyObject {
                         value,
                         confidence: _,
                         provenance: _,
+                        data_type_id: _,
                     } => PatchOperation::Replace(ReplaceOperation {
                         path: Pointer::new(path),
                         value: serde_json::to_value(value).change_context(PatchError)?,
@@ -776,6 +785,7 @@ mod tests {
                     metadata: Some(PropertyMetadata {
                         confidence: Confidence::new(0.1),
                         provenance: PropertyProvenance::default(),
+                        data_type_id: None,
                     }),
                 }
             )]))
@@ -797,6 +807,7 @@ mod tests {
                     metadata: Some(PropertyMetadata {
                         confidence: Confidence::new(0.1),
                         provenance: PropertyProvenance::default(),
+                        data_type_id: None,
                     }),
                 }
             )]))
@@ -930,6 +941,7 @@ mod tests {
                     PropertyMetadata {
                         confidence: Confidence::new(0.01),
                         provenance: PropertyProvenance::default(),
+                        data_type_id: None,
                     },
                 )
                 .expect_err("Unexpectedly set value")
@@ -944,6 +956,7 @@ mod tests {
                     PropertyMetadata {
                         confidence: Confidence::new(0.02),
                         provenance: PropertyProvenance::default(),
+                        data_type_id: None,
                     },
                 )
                 .expect("Failed to set value")
@@ -962,6 +975,7 @@ mod tests {
                     PropertyMetadata {
                         confidence: Confidence::new(0.03),
                         provenance: PropertyProvenance::default(),
+                        data_type_id: None,
                     },
                 )
                 .expect("Failed to set value")
@@ -980,6 +994,7 @@ mod tests {
                     PropertyMetadata {
                         confidence: Confidence::new(0.04),
                         provenance: PropertyProvenance::default(),
+                        data_type_id: None,
                     },
                 )
                 .expect("Failed to set value")
@@ -992,6 +1007,7 @@ mod tests {
                     PropertyMetadata {
                         confidence: Confidence::new(0.05),
                         provenance: PropertyProvenance::default(),
+                        data_type_id: None,
                     },
                 )
                 .expect_err("Unexpectedly set value with empty path")
@@ -1011,6 +1027,7 @@ mod tests {
                     PropertyMetadata {
                         confidence: Confidence::new(0.07),
                         provenance: PropertyProvenance::default(),
+                        data_type_id: None,
                     },
                 )
                 .expect_err("Unexpectedly set value")
