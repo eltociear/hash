@@ -65,17 +65,18 @@ impl ToSql for PropertyMetadata {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
-enum NestedPropertyMetadataMap {
+pub enum PropertyMetadataMapValue {
     #[serde(with = "codec::serde::string_hash_map")]
-    Array(HashMap<usize, PropertyMetadataMapElement>),
-    Object(HashMap<BaseUrl, PropertyMetadataMapElement>),
+    Array(HashMap<usize, Self>),
+    Object(HashMap<BaseUrl, Self>),
+    Value(PropertyMetadata),
 }
 
 #[cfg(feature = "utoipa")]
-impl ToSchema<'_> for NestedPropertyMetadataMap {
+impl ToSchema<'_> for PropertyMetadataMapValue {
     fn schema() -> (&'static str, openapi::RefOr<openapi::Schema>) {
         (
-            "NestedPropertyMetadataMap",
+            "PropertyMetadataMapValue",
             Schema::Object(
                 schema::ObjectBuilder::new()
                     .additional_properties(Some(Ref::from_schema_name(
@@ -236,8 +237,8 @@ impl<T> PropertyPathIndex for HashMap<usize, T> {
     }
 }
 
-impl PropertyPathIndex for NestedPropertyMetadataMap {
-    type Value = PropertyMetadataMapElement;
+impl PropertyPathIndex for PropertyMetadataMapValue {
+    type Value = PropertyMetadata;
 
     fn get(
         &self,
@@ -246,6 +247,7 @@ impl PropertyPathIndex for NestedPropertyMetadataMap {
         match self {
             Self::Object(map) => PropertyPathIndex::get(map, path_token),
             Self::Array(array) => PropertyPathIndex::get(array, path_token),
+            Self::Value(metadata) => Ok(Some(metadata)),
         }
     }
 
@@ -256,6 +258,7 @@ impl PropertyPathIndex for NestedPropertyMetadataMap {
         match self {
             Self::Object(map) => PropertyPathIndex::get_mut(map, path_token),
             Self::Array(array) => PropertyPathIndex::get_mut(array, path_token),
+            Self::Value(metadata) => Ok(Some(metadata)),
         }
     }
 
@@ -281,13 +284,13 @@ impl PropertyPathIndex for NestedPropertyMetadataMap {
     }
 }
 
-impl From<HashMap<usize, PropertyMetadataMapElement>> for NestedPropertyMetadataMap {
+impl From<HashMap<usize, PropertyMetadataMapElement>> for PropertyMetadataMapValue {
     fn from(value: HashMap<usize, PropertyMetadataMapElement>) -> Self {
         Self::Array(value)
     }
 }
 
-impl From<HashMap<BaseUrl, PropertyMetadataMapElement>> for NestedPropertyMetadataMap {
+impl From<HashMap<BaseUrl, PropertyMetadataMapElement>> for PropertyMetadataMapValue {
     fn from(value: HashMap<BaseUrl, PropertyMetadataMapElement>) -> Self {
         Self::Object(value)
     }
@@ -306,9 +309,9 @@ pub enum PropertyPathError {
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PropertyMetadataMapElement {
     #[serde(flatten, deserialize_with = "deserialize_metadata_element")]
-    nested: Option<NestedPropertyMetadataMap>,
+    pub nested: Option<PropertyMetadataMapValue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    metadata: Option<PropertyMetadata>,
+    pub metadata: Option<PropertyMetadata>,
 }
 
 #[cfg(feature = "utoipa")]
@@ -332,17 +335,15 @@ impl ToSchema<'_> for PropertyMetadataMapElement {
 // Serde does not deserialize into `None` if the flattened field is absent, so we do this manually
 fn deserialize_metadata_element<'de, D>(
     deserializer: D,
-) -> Result<Option<NestedPropertyMetadataMap>, D::Error>
+) -> Result<Option<PropertyMetadataMapValue>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    Ok(
-        match NestedPropertyMetadataMap::deserialize(deserializer)? {
-            NestedPropertyMetadataMap::Array(array) if array.is_empty() => None,
-            NestedPropertyMetadataMap::Array(array) => Some(array.into()),
-            NestedPropertyMetadataMap::Object(object) => Some(object.into()),
-        },
-    )
+    Ok(match PropertyMetadataMapValue::deserialize(deserializer)? {
+        PropertyMetadataMapValue::Array(array) if array.is_empty() => None,
+        PropertyMetadataMapValue::Array(array) => Some(array.into()),
+        PropertyMetadataMapValue::Object(object) => Some(object.into()),
+    })
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
@@ -353,6 +354,10 @@ impl PropertyMetadataMap {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub fn get(&self, key: &BaseUrl) -> Option<&PropertyMetadataMapElement> {
+        self.0.get(key)
     }
 
     /// Returns the metadata for the given property path.
@@ -366,7 +371,7 @@ impl PropertyMetadataMap {
     /// [`EmptyPath`]: PropertyPathError::EmptyPath
     /// [`ArrayExpected`]: PropertyPathError::ArrayExpected
     /// [`ObjectExpected`]: PropertyPathError::ObjectExpected
-    pub fn get<'s>(
+    pub fn get_metadata<'s>(
         &'s self,
         property_path: &PropertyPath<'_>,
     ) -> Result<Option<&'s PropertyMetadata>, Report<PropertyPathError>> {
@@ -428,10 +433,10 @@ impl PropertyMetadataMap {
                 .nested
                 .get_or_insert_with(|| match path_token {
                     PropertyPathElement::Property(_) => {
-                        NestedPropertyMetadataMap::Object(HashMap::default())
+                        PropertyMetadataMapValue::Object(HashMap::default())
                     }
                     PropertyPathElement::Index(_) => {
-                        NestedPropertyMetadataMap::Array(HashMap::default())
+                        PropertyMetadataMapValue::Array(HashMap::default())
                     }
                 })
                 .get_or_insert_with(path_token, PropertyMetadataMapElement::default)?;
@@ -559,6 +564,12 @@ impl PropertyMetadataMap {
             }
         }
         Ok(())
+    }
+}
+
+impl AsRef<HashMap<BaseUrl, PropertyMetadataMapElement>> for PropertyMetadataMap {
+    fn as_ref(&self) -> &HashMap<BaseUrl, PropertyMetadataMapElement> {
+        &self.0
     }
 }
 
@@ -770,7 +781,7 @@ mod tests {
             BaseUrl::new("https://example.com/a/".to_owned()).expect("Failed to parse base URL");
 
         assert_eq!(
-            serde_json::from_value::<NestedPropertyMetadataMap>(json!({
+            serde_json::from_value::<PropertyMetadataMapValue>(json!({
                "10": {
                     "metadata": {
                         "confidence": 0.1
@@ -778,7 +789,7 @@ mod tests {
                 }
             }))
             .expect("Failed to parse attribute metadata element"),
-            NestedPropertyMetadataMap::Array(HashMap::from([(
+            PropertyMetadataMapValue::Array(HashMap::from([(
                 10,
                 PropertyMetadataMapElement {
                     nested: None,
@@ -792,7 +803,7 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::from_value::<NestedPropertyMetadataMap>(json!({
+            serde_json::from_value::<PropertyMetadataMapValue>(json!({
                 base_url_a.clone(): {
                     "metadata": {
                         "confidence": 0.1
@@ -800,7 +811,7 @@ mod tests {
                 }
             }))
             .expect("Failed to parse attribute metadata element"),
-            NestedPropertyMetadataMap::Object(HashMap::from([(
+            PropertyMetadataMapValue::Object(HashMap::from([(
                 base_url_a,
                 PropertyMetadataMapElement {
                     nested: None,
@@ -849,7 +860,7 @@ mod tests {
         .expect("Failed to parse metadata map");
 
         assert_eq!(
-            map.get(
+            map.get_metadata(
                 &[
                     PropertyPathElement::from(&base_url_a),
                     PropertyPathElement::from(&base_url_b),
@@ -863,7 +874,7 @@ mod tests {
             Confidence::new(0.1)
         );
         assert!(
-            map.get(
+            map.get_metadata(
                 &[
                     PropertyPathElement::from(&base_url_a),
                     PropertyPathElement::from(&base_url_b),
@@ -876,7 +887,7 @@ mod tests {
             .is_none()
         );
         assert!(
-            map.get(
+            map.get_metadata(
                 &[
                     PropertyPathElement::from(&base_url_b),
                     PropertyPathElement::from(1000),
@@ -888,7 +899,7 @@ mod tests {
             .is_none()
         );
         assert_eq!(
-            map.get(
+            map.get_metadata(
                 &[
                     PropertyPathElement::from(&base_url_b),
                     PropertyPathElement::from(5000),
@@ -902,7 +913,7 @@ mod tests {
             Confidence::new(0.3)
         );
         assert!(matches!(
-            map.get(
+            map.get_metadata(
                 &[
                     PropertyPathElement::from(&base_url_a),
                     PropertyPathElement::from(1000),
@@ -915,7 +926,7 @@ mod tests {
             PropertyPathError::ObjectExpected { index: 1000 }
         ));
         assert!(matches!(
-            map.get(
+            map.get_metadata(
                 &[
                     PropertyPathElement::from(&base_url_b),
                     PropertyPathElement::from(&base_url_c),
@@ -928,7 +939,7 @@ mod tests {
             PropertyPathError::ArrayExpected { key: _ }
         ));
         assert_eq!(
-            map.get(&iter::once(PropertyPathElement::from(&base_url_c)).collect())
+            map.get_metadata(&iter::once(PropertyPathElement::from(&base_url_c)).collect())
                 .expect("Failed to get value"),
             None
         );

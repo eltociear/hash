@@ -33,6 +33,10 @@ pub enum PropertyValidationError {
     DataTypeValidation { id: VersionedUrl },
     #[error("the property `{key}` was specified, but not in the schema")]
     UnexpectedProperty { key: BaseUrl },
+    #[error("the property metadata `{key}` was specified, but no corresponding property exists")]
+    UnexpectedMetadata { key: BaseUrl },
+    #[error("the property metadata `{key}` was specified, but arrays cannot hold metadata")]
+    UnexpectedArrayMetadata { key: BaseUrl },
     #[error("the value provided does not match the required schema for `{key}`")]
     InvalidProperty { key: BaseUrl },
     #[error("the property key `{key}` is not a valid Base URL")]

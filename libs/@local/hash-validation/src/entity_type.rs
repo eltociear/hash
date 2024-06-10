@@ -1,22 +1,29 @@
 use core::borrow::Borrow;
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    num::NonZero,
+};
 
-use error_stack::{Report, ResultExt};
+use error_stack::{bail, Report, ResultExt};
 use futures::{stream, StreamExt, TryStreamExt};
 use graph_types::knowledge::{
     entity::{Entity, EntityId},
     link::LinkData,
-    PropertyObject, PropertyPath,
+    Property, PropertyMetadata, PropertyMetadataMap, PropertyMetadataMapElement,
+    PropertyMetadataMapValue, PropertyObject, PropertyPath,
 };
 use thiserror::Error;
 use type_system::{
     url::{BaseUrl, OntologyTypeVersion, VersionedUrl},
-    ClosedEntityType, DataType, Object, PropertyType,
+    Array, ClosedEntityType, DataType, JsonSchemaValueType, Object, PropertyType,
+    PropertyTypeReference, PropertyValues, ValueOrArray,
 };
 
 use crate::{
     error::{Actual, Expected},
-    EntityProvider, EntityTypeProvider, OntologyTypeProvider, Schema, Validate,
-    ValidateEntityComponents,
+    EntityProvider, EntityTypeProvider, OntologyTypeProvider, PropertyValidationError, Schema,
+    Validate, ValidateEntityComponents,
 };
 
 macro_rules! extend_report {
@@ -49,6 +56,288 @@ pub enum EntityValidationError {
     InvalidLinkTargetId { target_types: Vec<VersionedUrl> },
     #[error("The property path is invalid: `{path:?}`")]
     InvalidPropertyPath { path: PropertyPath<'static> },
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct EntitySchema<'a> {
+    pub entity_type: &'a ClosedEntityType,
+    pub metadata: &'a PropertyMetadataMap,
+}
+
+impl<P> Validate<EntitySchema<'_>, P> for PropertyObject {
+    type Error = EntityValidationError;
+
+    async fn validate(
+        &self,
+        schema: &EntitySchema<'_>,
+        components: ValidateEntityComponents,
+        context: &P,
+    ) -> Result<(), Report<Self::Error>> {
+        self.validate(
+            &PropertyObjectSchema {
+                properties: &schema.entity_type.properties,
+                required: &schema.entity_type.required,
+                metadata: schema.metadata.as_ref(),
+            },
+            components,
+            context,
+        )
+        .await
+        .change_context(EntityValidationError::InvalidProperties)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct PropertyObjectSchema<'a> {
+    pub properties: &'a HashMap<BaseUrl, ValueOrArray<PropertyTypeReference>>,
+    pub metadata: &'a HashMap<BaseUrl, PropertyMetadataMapElement>,
+    pub required: &'a HashSet<BaseUrl>,
+}
+
+impl<P> Validate<PropertyObjectSchema<'_>, P> for PropertyObject {
+    type Error = PropertyValidationError;
+
+    async fn validate(
+        &self,
+        schema: &PropertyObjectSchema<'_>,
+        components: ValidateEntityComponents,
+        context: &P,
+    ) -> Result<(), Report<Self::Error>> {
+        let mut status: Result<(), Report<PropertyValidationError>> = Ok(());
+
+        for (key, property) in self.iter() {
+            let Some(property_schema) = schema.properties.get(key) else {
+                extend_report!(
+                    status,
+                    PropertyValidationError::UnexpectedProperty { key: key.clone() }
+                );
+                continue;
+            };
+
+            let (metadata_map, metadata) = schema
+                .metadata
+                .get(key)
+                .map(|element| (element.nested.as_ref(), element.metadata.as_ref()))
+                .unwrap_or_default();
+
+            match (property, property_schema) {
+                (value, ValueOrArray::Value(schema)) => {
+                    let result = value
+                        .validate(
+                            &PropertySchema {
+                                property: PropertyRef::Reference(schema.url()),
+                                metadata_map,
+                                metadata,
+                            },
+                            components,
+                            context,
+                        )
+                        .await;
+                    if let Err(report) = result {
+                        extend_report!(
+                            status,
+                            report.change_context(PropertyValidationError::InvalidProperty {
+                                key: key.clone(),
+                            })
+                        );
+                    }
+                }
+                (Property::Array(array), ValueOrArray::Array(schema)) => {
+                    if let Some(metadata) = metadata {
+                        extend_report!(
+                            status,
+                            PropertyValidationError::UnexpectedMetadata {
+                                key: metadata.key.clone()
+                            }
+                        );
+                    }
+                    array
+                        .validate_value(
+                            &PropertyArraySchema {
+                                items: &schema.items,
+                                min_items: schema.min_items,
+                                max_items: schema.max_items,
+                                metadata: &Default::default(),
+                            },
+                            components,
+                            provider,
+                        )
+                        .await
+                }
+                (_, ValueOrArray::Array(_)) => {
+                    bail!(PropertyValidationError::InvalidType {
+                        actual: property.json_type(),
+                        expected: JsonSchemaValueType::Array,
+                    })
+                }
+            }
+
+            if let Err(report) = property
+                .validate(
+                    &PropertySchema {
+                        property,
+                        metadata_map,
+                        metadata,
+                    },
+                    components,
+                    context,
+                )
+                .await
+            {
+                extend_report!(
+                    status,
+                    report.change_context(PropertyValidationError::InvalidProperty {
+                        key: key.clone(),
+                    })
+                );
+            }
+        }
+
+        for metadata_key in schema.metadata.keys() {
+            if !self.properties().contains_key(metadata_key) {
+                extend_report!(
+                    status,
+                    PropertyValidationError::UnexpectedMetadata {
+                        key: metadata_key.clone()
+                    }
+                );
+            }
+        }
+
+        if components.required_properties {
+            for required_property in schema.required {
+                if !self.properties().contains_key(required_property) {
+                    extend_report!(
+                        status,
+                        PropertyValidationError::MissingRequiredProperty {
+                            key: required_property.clone(),
+                        }
+                    );
+                }
+            }
+        }
+
+        status
+    }
+}
+
+impl<S, P> Validate<ValueOrArray<PropertyTypeReference>, P> for Property
+where
+    Property: Validate<S, P>,
+{
+    type Error = PropertyValidationError;
+
+    async fn validate(
+        &self,
+        schema: &ValueOrArray<PropertyMetadataMapElement>,
+        components: ValidateEntityComponents,
+        context: &P,
+    ) -> Result<(), Report<Self::Error>> {
+        match (self, schema) {
+            (value, ValueOrArray::Value(schema)) => {
+                value.validate(schema, components, context).await
+            }
+            (Property::Array(array), ValueOrArray::Array(schema)) => {
+                array.validate(array, components, context).await
+            }
+            (_, ValueOrArray::Array(_)) => {
+                bail!(PropertyValidationError::InvalidType {
+                    actual: self.json_type(),
+                    expected: JsonSchemaValueType::Array,
+                })
+            }
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ValueOrArraySchema<'a> {
+    pub property_type: PropertyRef<'a>,
+    pub metadata: &'a PropertyMetadataMapElement,
+}
+
+pub struct PropertyArraySchema<'a> {
+    pub items: &'a PropertyTypeReference,
+    pub min_items: Option<usize>,
+    pub max_items: Option<NonZero<usize>>,
+    pub metadata: &'a HashMap<usize, PropertyMetadataMapElement>,
+}
+
+impl<P> Validate<PropertyArraySchema<'_>, P> for &[Property] {
+    type Error = PropertyValidationError;
+
+    async fn validate(
+        &self,
+        schema: &PropertyArraySchema<'_>,
+        components: ValidateEntityComponents,
+        context: &P,
+    ) -> Result<(), Report<Self::Error>> {
+        let mut status: Result<(), Report<PropertyValidationError>> = Ok(());
+
+        if components.num_items {
+            if let Some(min) = schema.min_items {
+                if self.len() < min {
+                    extend_report!(
+                        status,
+                        PropertyValidationError::TooFewItems {
+                            actual: self.len(),
+                            min,
+                        },
+                    );
+                }
+            }
+
+            if let Some(max) = schema.max_items.map(NonZero::get) {
+                if self.len() > max {
+                    extend_report!(
+                        status,
+                        PropertyValidationError::TooManyItems {
+                            actual: self.len(),
+                            max,
+                        },
+                    );
+                }
+            }
+        }
+
+        for (idx, property) in self.iter().enumerate() {
+            let (metadata_map, metadata) = schema
+                .metadata
+                .get(&idx)
+                .map(|element| (element.nested.as_ref(), element.metadata.as_ref()))
+                .unwrap_or_default();
+
+            if let Err(report) = property
+                .validate(
+                    &PropertySchema {
+                        property: PropertyRef::Reference(schema.items.url()),
+                        metadata,
+                        metadata_map,
+                    },
+                    components,
+                    context,
+                )
+                .await
+            {
+                extend_report!(status, report);
+            }
+        }
+
+        status
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum PropertyRef<'a> {
+    Reference(&'a VersionedUrl),
+    Inline(&'a PropertyType),
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct PropertySchema<'a> {
+    pub property: PropertyRef<'a>,
+    pub metadata: Option<&'a PropertyMetadata>,
+    pub metadata_map: Option<&'a PropertyMetadataMapValue>,
 }
 
 impl<P> Schema<PropertyObject, P> for ClosedEntityType
