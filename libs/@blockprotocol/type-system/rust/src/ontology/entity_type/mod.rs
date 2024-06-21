@@ -6,12 +6,9 @@ pub(in crate::ontology) mod raw;
 mod wasm;
 
 #[cfg(feature = "postgres")]
-use std::error::Error;
-use std::{
-    borrow::Borrow,
-    collections::{HashMap, HashSet},
-    ptr,
-};
+use core::error::Error;
+use core::{borrow::Borrow, ptr};
+use std::collections::{HashMap, HashSet};
 
 #[cfg(feature = "postgres")]
 use postgres_types::{private::BytesMut, FromSql, IsNull, Json, ToSql, Type};
@@ -42,7 +39,7 @@ pub struct EntityType {
 impl EntityType {
     /// Creates a new `EntityType`
     #[must_use]
-    pub fn new(
+    pub const fn new(
         id: VersionedUrl,
         title: String,
         description: Option<String>,
@@ -211,7 +208,7 @@ impl ValidateUrl for EntityTypeReference {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use core::str::FromStr;
 
     use super::*;
     use crate::utils::tests::check_serialization_from_str;

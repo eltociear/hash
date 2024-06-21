@@ -540,7 +540,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GetDataTypesRequest"
+                "$ref": "#/components/schemas/GetDataTypesParams"
               }
             }
           },
@@ -549,14 +549,6 @@
         "responses": {
           "200": {
             "description": "Gets a a list of data types that satisfy the given query.",
-            "headers": {
-              "Link": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "The link to be used to query the next page of data types"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -596,7 +588,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GetDataTypeSubgraphRequest"
+                "$ref": "#/components/schemas/GetDataTypeSubgraphParams"
               }
             }
           },
@@ -605,14 +597,6 @@
         "responses": {
           "200": {
             "description": "Gets a subgraph rooted at all data types that satisfy the given query, each resolved to the requested depth.",
-            "headers": {
-              "Link": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "The link to be used to query the next page of data types"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -904,11 +888,11 @@
         },
         "responses": {
           "200": {
-            "description": "The metadata of the updated entity",
+            "description": "The updated entity",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EntityMetadata"
+                  "$ref": "#/components/schemas/Entity"
                 }
               }
             }
@@ -1960,7 +1944,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GetEntityTypesRequest"
+                "$ref": "#/components/schemas/GetEntityTypesParams"
               }
             }
           },
@@ -1969,14 +1953,6 @@
         "responses": {
           "200": {
             "description": "Gets a a list of entity types that satisfy the given query.",
-            "headers": {
-              "Link": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "The link to be used to query the next page of entity types"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2016,7 +1992,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GetEntityTypeSubgraphRequest"
+                "$ref": "#/components/schemas/GetEntityTypeSubgraphParams"
               }
             }
           },
@@ -2025,14 +2001,6 @@
         "responses": {
           "200": {
             "description": "A subgraph rooted at entity types that satisfy the given query, each resolved to the requested depth.",
-            "headers": {
-              "Link": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "The link to be used to query the next page of entity types"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2534,7 +2502,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GetPropertyTypesRequest"
+                "$ref": "#/components/schemas/GetPropertyTypesParams"
               }
             }
           },
@@ -2543,14 +2511,6 @@
         "responses": {
           "200": {
             "description": "Gets a a list of property types that satisfy the given query.",
-            "headers": {
-              "Link": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "The link to be used to query the next page of property types"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2590,7 +2550,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GetPropertyTypeSubgraphRequest"
+                "$ref": "#/components/schemas/GetPropertyTypeSubgraphParams"
               }
             }
           },
@@ -3059,6 +3019,22 @@
         },
         "additionalProperties": false
       },
+      "ArrayMetadata": {
+        "type": "object",
+        "properties": {
+          "confidence": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Confidence"
+              }
+            ]
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/PropertyProvenance"
+          }
+        },
+        "additionalProperties": false
+      },
       "BaseUrl": {
         "type": "string",
         "format": "uri"
@@ -3207,7 +3183,7 @@
           "propertyMetadata": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/PropertyMetadataMap"
+                "$ref": "#/components/schemas/PropertyMetadataObject"
               }
             ]
           },
@@ -3676,6 +3652,7 @@
             "type": "object",
             "required": [
               "subjectId",
+              "subjectSet",
               "kind"
             ],
             "properties": {
@@ -3687,6 +3664,9 @@
               },
               "subjectId": {
                 "$ref": "#/components/schemas/AccountGroupId"
+              },
+              "subjectSet": {
+                "$ref": "#/components/schemas/EntitySubjectSet"
               }
             }
           }
@@ -3748,6 +3728,7 @@
             "type": "object",
             "required": [
               "subjectId",
+              "subjectSet",
               "kind"
             ],
             "properties": {
@@ -3759,6 +3740,9 @@
               },
               "subjectId": {
                 "$ref": "#/components/schemas/AccountGroupId"
+              },
+              "subjectSet": {
+                "$ref": "#/components/schemas/EntitySubjectSet"
               }
             }
           }
@@ -3832,7 +3816,7 @@
             }
           },
           "properties": {
-            "$ref": "#/components/schemas/PropertyMetadataMap"
+            "$ref": "#/components/schemas/PropertyMetadataObject"
           },
           "provenance": {
             "$ref": "#/components/schemas/EntityProvenance"
@@ -4113,6 +4097,13 @@
         "discriminator": {
           "propertyName": "kind"
         }
+      },
+      "EntitySubjectSet": {
+        "type": "string",
+        "enum": [
+          "administrator",
+          "member"
+        ]
       },
       "EntityTemporalMetadata": {
         "type": "object",
@@ -4613,6 +4604,7 @@
             "type": "object",
             "required": [
               "subjectId",
+              "subjectSet",
               "kind"
             ],
             "properties": {
@@ -4624,6 +4616,9 @@
               },
               "subjectId": {
                 "$ref": "#/components/schemas/AccountGroupId"
+              },
+              "subjectSet": {
+                "$ref": "#/components/schemas/EntitySubjectSet"
               }
             }
           }
@@ -4701,6 +4696,74 @@
             ],
             "properties": {
               "notEqual": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FilterExpression"
+                },
+                "maxItems": 2,
+                "minItems": 2
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "GreaterFilter",
+            "required": [
+              "notEqual"
+            ],
+            "properties": {
+              "greater": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FilterExpression"
+                },
+                "maxItems": 2,
+                "minItems": 2
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "GreaterOrEqualFilter",
+            "required": [
+              "notEqual"
+            ],
+            "properties": {
+              "greaterOrEqual": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FilterExpression"
+                },
+                "maxItems": 2,
+                "minItems": 2
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "LessFilter",
+            "required": [
+              "notEqual"
+            ],
+            "properties": {
+              "less": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FilterExpression"
+                },
+                "maxItems": 2,
+                "minItems": 2
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "LessOrEqualFilter",
+            "required": [
+              "notEqual"
+            ],
+            "properties": {
+              "lessOrEqual": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/FilterExpression"
@@ -4831,7 +4894,7 @@
           }
         ]
       },
-      "GetDataTypeSubgraphRequest": {
+      "GetDataTypeSubgraphParams": {
         "type": "object",
         "required": [
           "filter",
@@ -4840,14 +4903,30 @@
           "includeDrafts"
         ],
         "properties": {
+          "after": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DataTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "filter": {
             "$ref": "#/components/schemas/Filter"
           },
           "graphResolveDepths": {
             "$ref": "#/components/schemas/GraphResolveDepths"
           },
+          "includeCount": {
+            "type": "boolean"
+          },
           "includeDrafts": {
             "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
           },
           "temporalAxes": {
             "$ref": "#/components/schemas/QueryTemporalAxesUnresolved"
@@ -4861,12 +4940,20 @@
           "subgraph"
         ],
         "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DataTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "subgraph": {
             "$ref": "#/components/schemas/Subgraph"
           }
         }
       },
-      "GetDataTypesRequest": {
+      "GetDataTypesParams": {
         "type": "object",
         "required": [
           "filter",
@@ -4874,11 +4961,27 @@
           "includeDrafts"
         ],
         "properties": {
+          "after": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DataTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "filter": {
             "$ref": "#/components/schemas/Filter"
           },
+          "includeCount": {
+            "type": "boolean"
+          },
           "includeDrafts": {
             "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
           },
           "temporalAxes": {
             "$ref": "#/components/schemas/QueryTemporalAxesUnresolved"
@@ -4892,6 +4995,19 @@
           "dataTypes"
         ],
         "properties": {
+          "count": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DataTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "dataTypes": {
             "type": "array",
             "items": {
@@ -5041,7 +5157,7 @@
           }
         }
       },
-      "GetEntityTypeSubgraphRequest": {
+      "GetEntityTypeSubgraphParams": {
         "type": "object",
         "required": [
           "filter",
@@ -5050,14 +5166,30 @@
           "includeDrafts"
         ],
         "properties": {
+          "after": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EntityTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "filter": {
             "$ref": "#/components/schemas/Filter"
           },
           "graphResolveDepths": {
             "$ref": "#/components/schemas/GraphResolveDepths"
           },
+          "includeCount": {
+            "type": "boolean"
+          },
           "includeDrafts": {
             "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
           },
           "temporalAxes": {
             "$ref": "#/components/schemas/QueryTemporalAxesUnresolved"
@@ -5071,12 +5203,20 @@
           "subgraph"
         ],
         "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EntityTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "subgraph": {
             "$ref": "#/components/schemas/Subgraph"
           }
         }
       },
-      "GetEntityTypesRequest": {
+      "GetEntityTypesParams": {
         "type": "object",
         "required": [
           "filter",
@@ -5084,11 +5224,27 @@
           "includeDrafts"
         ],
         "properties": {
+          "after": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EntityTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "filter": {
             "$ref": "#/components/schemas/Filter"
           },
+          "includeCount": {
+            "type": "boolean"
+          },
           "includeDrafts": {
             "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
           },
           "temporalAxes": {
             "$ref": "#/components/schemas/QueryTemporalAxesUnresolved"
@@ -5102,6 +5258,19 @@
           "entityTypes"
         ],
         "properties": {
+          "count": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EntityTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "entityTypes": {
             "type": "array",
             "items": {
@@ -5110,7 +5279,7 @@
           }
         }
       },
-      "GetPropertyTypeSubgraphRequest": {
+      "GetPropertyTypeSubgraphParams": {
         "type": "object",
         "required": [
           "filter",
@@ -5119,14 +5288,30 @@
           "includeDrafts"
         ],
         "properties": {
+          "after": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PropertyTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "filter": {
             "$ref": "#/components/schemas/Filter"
           },
           "graphResolveDepths": {
             "$ref": "#/components/schemas/GraphResolveDepths"
           },
+          "includeCount": {
+            "type": "boolean"
+          },
           "includeDrafts": {
             "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
           },
           "temporalAxes": {
             "$ref": "#/components/schemas/QueryTemporalAxesUnresolved"
@@ -5140,12 +5325,20 @@
           "subgraph"
         ],
         "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PropertyTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "subgraph": {
             "$ref": "#/components/schemas/Subgraph"
           }
         }
       },
-      "GetPropertyTypesRequest": {
+      "GetPropertyTypesParams": {
         "type": "object",
         "required": [
           "filter",
@@ -5153,11 +5346,27 @@
           "includeDrafts"
         ],
         "properties": {
+          "after": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PropertyTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "filter": {
             "$ref": "#/components/schemas/Filter"
           },
+          "includeCount": {
+            "type": "boolean"
+          },
           "includeDrafts": {
             "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
           },
           "temporalAxes": {
             "$ref": "#/components/schemas/QueryTemporalAxesUnresolved"
@@ -5171,6 +5380,19 @@
           "propertyTypes"
         ],
         "properties": {
+          "count": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PropertyTypeVertexId"
+              }
+            ],
+            "nullable": true
+          },
           "propertyTypes": {
             "type": "array",
             "items": {
@@ -5547,7 +5769,7 @@
                 "type": "string",
                 "nullable": true
               },
-              "label_property": {
+              "labelProperty": {
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/BaseUrl"
@@ -5781,6 +6003,22 @@
         "type": "string",
         "format": "date-time",
         "nullable": true
+      },
+      "ObjectMetadata": {
+        "type": "object",
+        "properties": {
+          "confidence": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Confidence"
+              }
+            ]
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/PropertyProvenance"
+          }
+        },
+        "additionalProperties": false
       },
       "OntologyEdgeKind": {
         "type": "string",
@@ -6073,6 +6311,9 @@
                   "web-app"
                 ]
               },
+              "userAgent": {
+                "type": "string"
+              },
               "version": {
                 "type": "string",
                 "description": "The origin version, in whatever format the origin natively\nprovides."
@@ -6108,6 +6349,9 @@
                 "enum": [
                   "mobile-app"
                 ]
+              },
+              "userAgent": {
+                "type": "string"
               },
               "version": {
                 "type": "string",
@@ -6145,6 +6389,9 @@
                   "browser-extension"
                 ]
               },
+              "userAgent": {
+                "type": "string"
+              },
               "version": {
                 "type": "string",
                 "description": "The origin version, in whatever format the origin natively\nprovides."
@@ -6180,6 +6427,9 @@
                 "enum": [
                   "api"
                 ]
+              },
+              "userAgent": {
+                "type": "string"
               },
               "version": {
                 "type": "string",
@@ -6223,6 +6473,9 @@
                   "flow"
                 ]
               },
+              "userAgent": {
+                "type": "string"
+              },
               "version": {
                 "type": "string",
                 "description": "The origin version, in whatever format the origin natively\nprovides."
@@ -6258,6 +6511,9 @@
                 "enum": [
                   "migration"
                 ]
+              },
+              "userAgent": {
+                "type": "string"
               },
               "version": {
                 "type": "string",
@@ -6434,38 +6690,63 @@
           "propertyName": "op"
         }
       },
-      "PropertyMetadata": {
-        "type": "object",
-        "properties": {
-          "confidence": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Confidence"
+      "PropertyMetadataElement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "$ref": "#/components/schemas/ArrayMetadata"
+              },
+              "value": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PropertyMetadataElement"
+                }
               }
-            ]
+            }
           },
-          "provenance": {
-            "$ref": "#/components/schemas/PropertyProvenance"
-          }
-        }
-      },
-      "PropertyMetadataMap": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "required": [
-            "path",
-            "metadata"
-          ],
-          "properties": {
-            "metadata": {
-              "$ref": "#/components/schemas/PropertyMetadata"
-            },
-            "path": {
-              "$ref": "#/components/schemas/PropertyPath"
+          {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "$ref": "#/components/schemas/ObjectMetadata"
+              },
+              "value": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/PropertyMetadataElement"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "metadata"
+            ],
+            "properties": {
+              "metadata": {
+                "$ref": "#/components/schemas/ValueMetadata"
+              }
             }
           }
-        }
+        ]
+      },
+      "PropertyMetadataObject": {
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMetadata"
+          },
+          "value": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PropertyMetadataElement"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "PropertyObject": {
         "type": "object",
@@ -6483,10 +6764,10 @@
               "op"
             ],
             "properties": {
-              "confidence": {
+              "metadata": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/Confidence"
+                    "$ref": "#/components/schemas/PropertyMetadataElement"
                   }
                 ]
               },
@@ -6498,13 +6779,6 @@
               },
               "path": {
                 "$ref": "#/components/schemas/PropertyPath"
-              },
-              "provenance": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PropertyProvenance"
-                  }
-                ]
               },
               "value": {
                 "$ref": "#/components/schemas/Property"
@@ -6537,10 +6811,10 @@
               "op"
             ],
             "properties": {
-              "confidence": {
+              "metadata": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/Confidence"
+                    "$ref": "#/components/schemas/PropertyMetadataElement"
                   }
                 ]
               },
@@ -6548,107 +6822,6 @@
                 "type": "string",
                 "enum": [
                   "replace"
-                ]
-              },
-              "path": {
-                "$ref": "#/components/schemas/PropertyPath"
-              },
-              "provenance": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PropertyProvenance"
-                  }
-                ]
-              },
-              "value": {
-                "$ref": "#/components/schemas/Property"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "from",
-              "path",
-              "op"
-            ],
-            "properties": {
-              "confidence": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Confidence"
-                  }
-                ]
-              },
-              "from": {
-                "$ref": "#/components/schemas/PropertyPath"
-              },
-              "op": {
-                "type": "string",
-                "enum": [
-                  "move"
-                ]
-              },
-              "path": {
-                "$ref": "#/components/schemas/PropertyPath"
-              },
-              "provenance": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PropertyProvenance"
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "from",
-              "path",
-              "op"
-            ],
-            "properties": {
-              "confidence": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Confidence"
-                  }
-                ]
-              },
-              "from": {
-                "$ref": "#/components/schemas/PropertyPath"
-              },
-              "op": {
-                "type": "string",
-                "enum": [
-                  "copy"
-                ]
-              },
-              "path": {
-                "$ref": "#/components/schemas/PropertyPath"
-              },
-              "provenance": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PropertyProvenance"
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "path",
-              "value",
-              "op"
-            ],
-            "properties": {
-              "op": {
-                "type": "string",
-                "enum": [
-                  "test"
                 ]
               },
               "path": {
@@ -6690,7 +6863,8 @@
               "$ref": "#/components/schemas/SourceProvenance"
             }
           }
-        }
+        },
+        "additionalProperties": false
       },
       "PropertyTypeEditorSubject": {
         "oneOf": [
@@ -7037,9 +7211,25 @@
       "ProvidedOntologyEditionProvenance": {
         "type": "object",
         "properties": {
-          "__placeholder": {
-            "default": null,
-            "nullable": true
+          "actorType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActorType"
+              }
+            ]
+          },
+          "origin": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OriginProvenance"
+              }
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceProvenance"
+            }
           }
         },
         "additionalProperties": false
@@ -7731,9 +7921,32 @@
           "propertyMetadata": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/PropertyMetadataMap"
+                "$ref": "#/components/schemas/PropertyMetadataObject"
               }
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValueMetadata": {
+        "type": "object",
+        "properties": {
+          "confidence": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Confidence"
+              }
+            ]
+          },
+          "dataTypeId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VersionedUrl"
+              }
+            ]
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/PropertyProvenance"
           }
         },
         "additionalProperties": false

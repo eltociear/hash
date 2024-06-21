@@ -13,8 +13,10 @@ import {
   getFormDataFromEntityType,
   useEntityTypeForm,
 } from "@hashintel/type-editor";
+import type { AccountId } from "@local/hash-graph-types/account";
+import type { BaseUrl } from "@local/hash-graph-types/ontology";
+import type { OwnedById } from "@local/hash-graph-types/web";
 import { generateLinkMapWithConsistentSelfReferences } from "@local/hash-isomorphic-utils/ontology-types";
-import type { AccountId, BaseUrl, OwnedById } from "@local/hash-subgraph";
 import { linkEntityTypeUrl } from "@local/hash-subgraph";
 import type { Theme } from "@mui/material";
 import { Box, Container, Typography } from "@mui/material";
@@ -231,14 +233,14 @@ export const EntityTypePage = ({
     : extractVersion(entityType.schema.$id);
 
   const convertToLinkType = wrapHandleSubmit(async (data) => {
-    const entityTypeSchema = getEntityTypeFromFormData(data);
+    const { icon, labelProperty, schema } = getEntityTypeFromFormData(data);
 
     const res = await updateEntityType(
       {
-        ...entityTypeSchema,
-        allOf: [{ $ref: linkEntityTypeUrl }],
+        ...schema,
+        allOf: [{ $ref: linkEntityTypeUrl }, ...schema.allOf],
       },
-      { icon: data.icon },
+      { icon, labelProperty: labelProperty as BaseUrl },
     );
 
     if (!res.errors?.length && res.data) {

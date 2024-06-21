@@ -3,10 +3,12 @@ import "../shared/common.scss";
 import { Button } from "@hashintel/design-system";
 import { theme } from "@hashintel/design-system/theme";
 import { Box, Skeleton, Stack, ThemeProvider, Typography } from "@mui/material";
+import browser from "webextension-polyfill";
 
 import { HashLockup } from "../shared/hash-lockup";
 import { lightModeBorderColor } from "../shared/style-values";
-import { useUser } from "../shared/use-user";
+// eslint-disable-next-line no-restricted-imports
+import { useUserValue } from "../shared/use-user-value";
 import { browserName } from "../shared/which-browser";
 
 /**
@@ -15,7 +17,9 @@ import { browserName } from "../shared/which-browser";
  * Preferences should be loaded and persisted using {@link useStorageSync}
  */
 export const OptionsContents = () => {
-  const { user, loading } = useUser();
+  const { user, loading } = useUserValue();
+
+  const version = browser.runtime.getManifest().version;
 
   return (
     <ThemeProvider theme={theme}>
@@ -41,6 +45,15 @@ export const OptionsContents = () => {
               sx={{ color: ({ palette }) => palette.common.black }}
             >
               HASH for {browserName}
+            </Typography>
+            <Typography
+              component="span"
+              sx={{
+                color: ({ palette }) => palette.gray[40],
+                ml: 1,
+              }}
+            >
+              v{version}
             </Typography>
           </Typography>
           <Stack direction="row" alignItems="center" mt={6}>

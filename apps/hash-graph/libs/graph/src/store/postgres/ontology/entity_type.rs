@@ -1,7 +1,5 @@
-use std::{
-    collections::{HashMap, HashSet},
-    iter::once,
-};
+use core::iter::once;
+use std::collections::{HashMap, HashSet};
 
 use authorization::{
     backend::ModifyRelationshipOperation,
@@ -12,7 +10,7 @@ use authorization::{
     AuthorizationApi,
 };
 use error_stack::{ensure, Report, Result, ResultExt};
-use futures::TryStreamExt;
+use futures::{FutureExt, TryStreamExt};
 use graph_types::{
     account::{AccountId, EditionArchivedById, EditionCreatedById},
     ontology::{
@@ -25,6 +23,7 @@ use graph_types::{
 use postgres_types::{Json, ToSql};
 use temporal_versioning::{RightBoundedTemporalInterval, Timestamp, TransactionTime};
 use tokio_postgres::{GenericClient, Row};
+use tracing::instrument;
 use type_system::{
     url::{BaseUrl, OntologyTypeVersion, VersionedUrl},
     ClosedEntityType, EntityType,
@@ -37,9 +36,10 @@ use crate::{
         crud::{QueryResult, ReadPaginated, VertexIdSorting},
         error::DeletionError,
         ontology::{
-            ArchiveEntityTypeParams, CreateEntityTypeParams, GetEntityTypeSubgraphParams,
-            GetEntityTypeSubgraphResponse, GetEntityTypesParams, GetEntityTypesResponse,
-            UnarchiveEntityTypeParams, UpdateEntityTypeEmbeddingParams, UpdateEntityTypesParams,
+            ArchiveEntityTypeParams, CountEntityTypesParams, CreateEntityTypeParams,
+            GetEntityTypeSubgraphParams, GetEntityTypeSubgraphResponse, GetEntityTypesParams,
+            GetEntityTypesResponse, UnarchiveEntityTypeParams, UpdateEntityTypeEmbeddingParams,
+            UpdateEntityTypesParams,
         },
         postgres::{
             crud::QueryRecordDecode,
@@ -110,65 +110,101 @@ where
             }))
     }
 
-    async fn get_entity_types_impl(
+    #[expect(clippy::manual_async_fn, reason = "This method is recursive")]
+    fn get_entity_types_impl(
         &self,
         actor_id: AccountId,
         params: GetEntityTypesParams<'_>,
         temporal_axes: &QueryTemporalAxes,
-    ) -> Result<(GetEntityTypesResponse, Zookie<'static>), QueryError> {
-        // TODO: Remove again when subgraph logic was revisited
-        //   see https://linear.app/hash/issue/H-297
-        let mut visited_ontology_ids = HashSet::new();
+    ) -> impl Future<Output = Result<(GetEntityTypesResponse, Zookie<'static>), QueryError>> + Send
+    {
+        async move {
+            #[expect(clippy::if_then_some_else_none, reason = "Function is async")]
+            let count = if params.include_count {
+                Some(
+                    self.count_entity_types(
+                        actor_id,
+                        CountEntityTypesParams {
+                            filter: params.filter.clone(),
+                            temporal_axes: params.temporal_axes.clone(),
+                            include_drafts: params.include_drafts,
+                        },
+                    )
+                    .boxed()
+                    .await?,
+                )
+            } else {
+                None
+            };
 
-        let (data, artifacts) = ReadPaginated::<EntityTypeWithMetadata>::read_paginated_vec(
-            self,
-            &params.filter,
-            Some(temporal_axes),
-            &VertexIdSorting {
-                cursor: params.after,
-            },
-            params.limit,
-            params.include_drafts,
-        )
-        .await?;
-        let entity_types = data
-            .into_iter()
-            .filter_map(|row| {
-                let entity_type = row.decode_record(&artifacts);
-                let id = EntityTypeId::from_url(entity_type.schema.id());
-                // The records are already sorted by time, so we can just take the first one
-                visited_ontology_ids.insert(id).then_some((id, entity_type))
-            })
-            .collect::<Vec<_>>();
+            // TODO: Remove again when subgraph logic was revisited
+            //   see https://linear.app/hash/issue/H-297
+            let mut visited_ontology_ids = HashSet::new();
+            let time_axis = temporal_axes.variable_time_axis();
 
-        let filtered_ids = entity_types
-            .iter()
-            .map(|(entity_type_id, _)| *entity_type_id)
-            .collect::<Vec<_>>();
-
-        let (permissions, zookie) = self
-            .authorization_api
-            .check_entity_types_permission(
-                actor_id,
-                EntityTypePermission::View,
-                filtered_ids,
-                Consistency::FullyConsistent,
+            let (data, artifacts) = ReadPaginated::<EntityTypeWithMetadata>::read_paginated_vec(
+                self,
+                &params.filter,
+                Some(temporal_axes),
+                &VertexIdSorting {
+                    cursor: params.after,
+                },
+                params.limit,
+                params.include_drafts,
             )
-            .await
-            .change_context(QueryError)?;
+            .await?;
+            let entity_types = data
+                .into_iter()
+                .filter_map(|row| {
+                    let entity_type = row.decode_record(&artifacts);
+                    let id = EntityTypeId::from_url(entity_type.schema.id());
+                    // The records are already sorted by time, so we can just take the first one
+                    visited_ontology_ids.insert(id).then_some((id, entity_type))
+                })
+                .collect::<Vec<_>>();
 
-        let entity_types = entity_types
-            .into_iter()
-            .filter_map(|(id, entity_type)| {
-                permissions
-                    .get(&id)
-                    .copied()
-                    .unwrap_or(false)
-                    .then_some(entity_type)
-            })
-            .collect();
+            let filtered_ids = entity_types
+                .iter()
+                .map(|(entity_type_id, _)| *entity_type_id)
+                .collect::<Vec<_>>();
 
-        Ok((GetEntityTypesResponse { entity_types }, zookie))
+            let (permissions, zookie) = self
+                .authorization_api
+                .check_entity_types_permission(
+                    actor_id,
+                    EntityTypePermission::View,
+                    filtered_ids,
+                    Consistency::FullyConsistent,
+                )
+                .await
+                .change_context(QueryError)?;
+
+            let entity_types = entity_types
+                .into_iter()
+                .filter_map(|(id, entity_type)| {
+                    permissions
+                        .get(&id)
+                        .copied()
+                        .unwrap_or(false)
+                        .then_some(entity_type)
+                })
+                .collect::<Vec<_>>();
+
+            Ok((
+                GetEntityTypesResponse {
+                    cursor: if params.limit.is_some() {
+                        entity_types
+                            .last()
+                            .map(|entity_type| entity_type.vertex_id(time_axis))
+                    } else {
+                        None
+                    },
+                    entity_types,
+                    count,
+                },
+                zookie,
+            ))
+        }
     }
 
     /// Internal method to read a [`EntityTypeWithMetadata`] into four [`TraversalContext`]s.
@@ -672,6 +708,26 @@ where
         }
     }
 
+    async fn count_entity_types(
+        &self,
+        actor_id: AccountId,
+        params: CountEntityTypesParams<'_>,
+    ) -> Result<usize, QueryError> {
+        self.get_entity_types(
+            actor_id,
+            GetEntityTypesParams {
+                filter: params.filter,
+                temporal_axes: params.temporal_axes,
+                include_drafts: params.include_drafts,
+                after: None,
+                limit: None,
+                include_count: false,
+            },
+        )
+        .await
+        .map(|response| response.entity_types.len())
+    }
+
     async fn get_entity_types(
         &self,
         actor_id: AccountId,
@@ -692,7 +748,14 @@ where
         let temporal_axes = params.temporal_axes.clone().resolve();
         let time_axis = temporal_axes.variable_time_axis();
 
-        let (GetEntityTypesResponse { entity_types }, zookie) = self
+        let (
+            GetEntityTypesResponse {
+                entity_types,
+                cursor,
+                count,
+            },
+            zookie,
+        ) = self
             .get_entity_types_impl(
                 actor_id,
                 GetEntityTypesParams {
@@ -701,6 +764,7 @@ where
                     after: params.after,
                     limit: params.limit,
                     include_drafts: params.include_drafts,
+                    include_count: params.include_count,
                 },
                 &temporal_axes,
             )
@@ -753,7 +817,11 @@ where
             .read_traversed_vertices(self, &mut subgraph, params.include_drafts)
             .await?;
 
-        Ok(GetEntityTypeSubgraphResponse { subgraph })
+        Ok(GetEntityTypeSubgraphResponse {
+            subgraph,
+            cursor,
+            count,
+        })
     }
 
     #[tracing::instrument(level = "info", skip(self, params))]
@@ -1002,7 +1070,11 @@ where
                         WHERE (ontology_id) IN (SELECT ontology_id FROM embeddings_to_delete)
                     )
                 INSERT INTO entity_type_embeddings
-                SELECT ontology_id, embedding, updated_at_transaction_time FROM provided_embeddings
+                SELECT
+                    ontology_id,
+                    embedding,
+                    updated_at_transaction_time
+                FROM provided_embeddings
                 ON CONFLICT (ontology_id) DO UPDATE SET
                     embedding = EXCLUDED.embedding,
                     updated_at_transaction_time = EXCLUDED.updated_at_transaction_time
@@ -1033,10 +1105,10 @@ pub struct EntityTypeRowIndices {
 }
 
 impl QueryRecordDecode for EntityTypeWithMetadata {
-    type CompilationArtifacts = EntityTypeRowIndices;
+    type Indices = EntityTypeRowIndices;
     type Output = Self;
 
-    fn decode(row: &Row, indices: &Self::CompilationArtifacts) -> Self {
+    fn decode(row: &Row, indices: &Self::Indices) -> Self {
         let record_id = OntologyTypeRecordId {
             base_url: row.get(indices.base_url),
             version: row.get(indices.version),
@@ -1082,10 +1154,11 @@ impl PostgresRecord for EntityTypeWithMetadata {
 
     fn parameters() -> Self::CompilationParameters {}
 
+    #[instrument(level = "info", skip(compiler, _paths))]
     fn compile<'p, 'q: 'p>(
         compiler: &mut SelectCompiler<'p, 'q, Self>,
         _paths: &Self::CompilationParameters,
-    ) -> Self::CompilationArtifacts {
+    ) -> Self::Indices {
         EntityTypeRowIndices {
             base_url: compiler.add_distinct_selection_with_ordering(
                 &EntityTypeQueryPath::BaseUrl,

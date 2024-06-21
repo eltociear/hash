@@ -3,8 +3,8 @@ import { PROPERTY_TYPE_META_SCHEMA } from "@blockprotocol/type-system";
 import { NotFoundError } from "@local/hash-backend-utils/error";
 import type {
   ArchivePropertyTypeParams,
-  GetPropertyTypesRequest,
-  GetPropertyTypeSubgraphRequest,
+  GetPropertyTypesParams,
+  GetPropertyTypeSubgraphParams,
   ModifyRelationshipOperation,
   OntologyTemporalMetadata,
   PropertyTypePermission,
@@ -12,6 +12,12 @@ import type {
   UnarchivePropertyTypeParams,
   UpdatePropertyTypeRequest,
 } from "@local/hash-graph-client";
+import type {
+  OntologyTypeRecordId,
+  PropertyTypeMetadata,
+  PropertyTypeWithMetadata,
+} from "@local/hash-graph-types/ontology";
+import type { OwnedById } from "@local/hash-graph-types/web";
 import { currentTimeInstantTemporalAxes } from "@local/hash-isomorphic-utils/graph-queries";
 import { generateTypeId } from "@local/hash-isomorphic-utils/ontology-types";
 import {
@@ -20,13 +26,9 @@ import {
 } from "@local/hash-isomorphic-utils/subgraph-mapping";
 import type { ConstructPropertyTypeParams } from "@local/hash-isomorphic-utils/types";
 import type {
-  OntologyTypeRecordId,
-  OwnedById,
   PropertyTypeAuthorizationRelationship,
-  PropertyTypeMetadata,
   PropertyTypeRelationAndSubject,
   PropertyTypeRootType,
-  PropertyTypeWithMetadata,
   Subgraph,
 } from "@local/hash-subgraph";
 import { ontologyTypeRecordIdToVersionedUrl } from "@local/hash-subgraph";
@@ -90,7 +92,7 @@ export const createPropertyType: ImpureGraphFunction<
 };
 
 export const getPropertyTypes: ImpureGraphFunction<
-  Omit<GetPropertyTypesRequest, "includeDrafts">,
+  Omit<GetPropertyTypesParams, "includeDrafts">,
   Promise<PropertyTypeWithMetadata[]>
 > = async ({ graphApi }, { actorId }, request) =>
   graphApi
@@ -105,7 +107,7 @@ export const getPropertyTypes: ImpureGraphFunction<
  * @param params.query the structural query to filter property types by.
  */
 export const getPropertyTypeSubgraph: ImpureGraphFunction<
-  Omit<GetPropertyTypeSubgraphRequest, "includeDrafts">,
+  Omit<GetPropertyTypeSubgraphParams, "includeDrafts">,
   Promise<Subgraph<PropertyTypeRootType>>
 > = async ({ graphApi }, { actorId }, request) =>
   graphApi
@@ -149,14 +151,14 @@ export const getPropertyTypeById: ImpureGraphFunction<
  * If the type does not already exist within the Graph, and is an externally-hosted type, this will also load the type into the Graph.
  */
 export const getPropertyTypeSubgraphById: ImpureGraphFunction<
-  Omit<GetPropertyTypeSubgraphRequest, "filter" | "includeDrafts"> & {
+  Omit<GetPropertyTypeSubgraphParams, "filter" | "includeDrafts"> & {
     propertyTypeId: VersionedUrl;
   },
   Promise<Subgraph<PropertyTypeRootType>>
 > = async (context, authentication, params) => {
   const { graphResolveDepths, temporalAxes, propertyTypeId } = params;
 
-  const request: Omit<GetPropertyTypeSubgraphRequest, "includeDrafts"> = {
+  const request: Omit<GetPropertyTypeSubgraphParams, "includeDrafts"> = {
     filter: {
       equal: [{ path: ["versionedUrl"] }, { parameter: propertyTypeId }],
     },

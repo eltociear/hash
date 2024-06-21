@@ -1,11 +1,10 @@
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    iter::once,
-};
+use alloc::borrow::Cow;
+use core::iter::once;
+use std::collections::{HashMap, HashSet};
 
 use postgres_types::ToSql;
 use temporal_versioning::TimeAxis;
+use tracing::instrument;
 
 use crate::{
     store::{
@@ -375,6 +374,7 @@ impl<'p, 'q: 'p, R: PostgresRecord> SelectCompiler<'p, 'q, R> {
     }
 
     /// Transpiles the statement into SQL and the parameter to be passed to a prepared statement.
+    #[instrument(level = "info", skip(self))]
     pub fn compile(&self) -> (String, &[&'p (dyn ToSql + Sync)]) {
         (
             self.statement.transpile_to_string(),
@@ -417,6 +417,22 @@ impl<'p, 'q: 'p, R: PostgresRecord> SelectCompiler<'p, 'q, R> {
                     .map(|expression| self.compile_filter_expression(expression).0),
                 rhs.as_ref()
                     .map(|expression| self.compile_filter_expression(expression).0),
+            ),
+            Filter::Greater(lhs, rhs) => Condition::Greater(
+                self.compile_filter_expression(lhs).0,
+                self.compile_filter_expression(rhs).0,
+            ),
+            Filter::GreaterOrEqual(lhs, rhs) => Condition::GreaterOrEqual(
+                self.compile_filter_expression(lhs).0,
+                self.compile_filter_expression(rhs).0,
+            ),
+            Filter::Less(lhs, rhs) => Condition::Less(
+                self.compile_filter_expression(lhs).0,
+                self.compile_filter_expression(rhs).0,
+            ),
+            Filter::LessOrEqual(lhs, rhs) => Condition::LessOrEqual(
+                self.compile_filter_expression(lhs).0,
+                self.compile_filter_expression(rhs).0,
             ),
             Filter::CosineDistance(lhs, rhs, max) => match (lhs, rhs) {
                 (FilterExpression::Path(path), FilterExpression::Parameter(parameter))

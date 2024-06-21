@@ -1,7 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(nightly, feature(error_in_core))]
 // TODO: once more stable introduce: warning missing_docs, clippy::missing_errors_doc
 #![deny(unsafe_code)]
+#![allow(clippy::missing_errors_doc)]
+
 mod array;
 mod deserializer;
 mod error;

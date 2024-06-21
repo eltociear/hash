@@ -1,3 +1,4 @@
+import { Entity } from "@local/hash-graph-sdk/entity";
 import { getSimplifiedActionInputs } from "@local/hash-isomorphic-utils/flows/action-definitions";
 import type {
   FailedEntityProposal,
@@ -39,8 +40,14 @@ export const persistEntitiesAction: FlowActionActivity = async ({ inputs }) => {
     },
   );
 
-  const failedEntitiesByLocalId: Record<string, FailedEntityProposal> = {};
-  const persistedEntitiesByLocalId: Record<string, PersistedEntity> = {};
+  const failedEntitiesByLocalId: Record<
+    string,
+    Omit<FailedEntityProposal, "existingEntity"> & { existingEntity?: Entity }
+  > = {};
+  const persistedEntitiesByLocalId: Record<
+    string,
+    Omit<PersistedEntity, "entity"> & { entity?: Entity }
+  > = {};
 
   /**
    * We could potentially parallelize the creation of (a) non-link entities and (b) link entities,
@@ -59,7 +66,9 @@ export const persistEntitiesAction: FlowActionActivity = async ({ inputs }) => {
       if (!sourceEntityId || !targetEntityId) {
         failedEntitiesByLocalId[unresolvedEntity.localEntityId] = {
           proposedEntity: unresolvedEntity,
-          message: `Expected both sourceEntityLocalId and targetEntityLocalId to be set, but got sourceEntityId='${JSON.stringify(sourceEntityId)}' and targetEntityId='${JSON.stringify(targetEntityId)}'`,
+          message: `Expected both sourceEntityLocalId and targetEntityLocalId to be set, but got sourceEntityId='${JSON.stringify(
+            sourceEntityId,
+          )}' and targetEntityId='${JSON.stringify(targetEntityId)}'`,
         };
         continue;
       }
@@ -79,7 +88,9 @@ export const persistEntitiesAction: FlowActionActivity = async ({ inputs }) => {
       if (!leftEntityId) {
         failedEntitiesByLocalId[unresolvedEntity.localEntityId] = {
           proposedEntity: unresolvedEntity,
-          message: `Linked entity with sourceEntityId='${JSON.stringify(sourceEntityId)}' has not been successfully persisted`,
+          message: `Linked entity with sourceEntityId='${JSON.stringify(
+            sourceEntityId,
+          )}' has not been successfully persisted`,
         };
         continue;
       }
@@ -87,7 +98,9 @@ export const persistEntitiesAction: FlowActionActivity = async ({ inputs }) => {
       if (!rightEntityId) {
         failedEntitiesByLocalId[unresolvedEntity.localEntityId] = {
           proposedEntity: unresolvedEntity,
-          message: `Linked entity with targetEntityId='${JSON.stringify(targetEntityId)}' has not been successfully persisted`,
+          message: `Linked entity with targetEntityId='${JSON.stringify(
+            targetEntityId,
+          )}' has not been successfully persisted`,
         };
         continue;
       }
@@ -124,7 +137,9 @@ export const persistEntitiesAction: FlowActionActivity = async ({ inputs }) => {
     if (Array.isArray(output?.value)) {
       failedEntitiesByLocalId[unresolvedEntity.localEntityId] = {
         proposedEntity: unresolvedEntity,
-        message: `Expected a single persisted entity, but received ${!output ? "no outputs" : `an array of length ${output.value.length}`}`,
+        message: `Expected a single persisted entity, but received ${
+          !output ? "no outputs" : `an array of length ${output.value.length}`
+        }`,
       };
       continue;
     }
@@ -132,8 +147,13 @@ export const persistEntitiesAction: FlowActionActivity = async ({ inputs }) => {
     if (persistedEntityOutputs.code !== StatusCode.Ok) {
       failedEntitiesByLocalId[unresolvedEntity.localEntityId] = {
         ...(output?.value ?? {}),
+        existingEntity: output?.value.existingEntity
+          ? new Entity(output.value.existingEntity)
+          : undefined,
         proposedEntity: entityWithResolvedLinks,
-        message: `${persistedEntityOutputs.code}: ${persistedEntityOutputs.message ?? `no further details available`}`,
+        message: `${persistedEntityOutputs.code}: ${
+          persistedEntityOutputs.message ?? `no further details available`
+        }`,
       };
       continue;
     }
@@ -146,11 +166,24 @@ export const persistEntitiesAction: FlowActionActivity = async ({ inputs }) => {
       continue;
     }
 
-    persistedEntitiesByLocalId[unresolvedEntity.localEntityId] = output.value;
+    persistedEntitiesByLocalId[unresolvedEntity.localEntityId] = {
+      ...output.value,
+      entity: output.value.entity ? new Entity(output.value.entity) : undefined,
+    };
   }
 
-  const persistedEntities = Object.values(persistedEntitiesByLocalId);
-  const failedEntityProposals = Object.values(failedEntitiesByLocalId);
+  const persistedEntities = Object.values(persistedEntitiesByLocalId).map(
+    (persisted) => ({
+      ...persisted,
+      entity: persisted.entity?.toJSON(),
+    }),
+  );
+  const failedEntityProposals = Object.values(failedEntitiesByLocalId).map(
+    (failed) => ({
+      ...failed,
+      existingEntity: failed.existingEntity?.toJSON(),
+    }),
+  );
 
   return {
     /** @todo H-2604 have some kind of 'partially completed' status when reworking flow return codes */

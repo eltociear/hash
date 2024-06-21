@@ -4,13 +4,20 @@ import { NotFoundError } from "@local/hash-backend-utils/error";
 import type {
   ArchiveDataTypeParams,
   DataTypePermission,
-  GetDataTypesRequest,
-  GetDataTypeSubgraphRequest,
+  GetDataTypesParams,
+  GetDataTypeSubgraphParams,
   ModifyRelationshipOperation,
   OntologyTemporalMetadata,
   ProvidedOntologyEditionProvenance,
   UnarchiveDataTypeParams,
 } from "@local/hash-graph-client";
+import type {
+  ConstructDataTypeParams,
+  DataTypeMetadata,
+  DataTypeWithMetadata,
+  OntologyTypeRecordId,
+} from "@local/hash-graph-types/ontology";
+import type { OwnedById } from "@local/hash-graph-types/web";
 import { currentTimeInstantTemporalAxes } from "@local/hash-isomorphic-utils/graph-queries";
 import { generateTypeId } from "@local/hash-isomorphic-utils/ontology-types";
 import {
@@ -18,14 +25,9 @@ import {
   mapGraphApiSubgraphToSubgraph,
 } from "@local/hash-isomorphic-utils/subgraph-mapping";
 import type {
-  ConstructDataTypeParams,
   DataTypeAuthorizationRelationship,
-  DataTypeMetadata,
   DataTypeRelationAndSubject,
   DataTypeRootType,
-  DataTypeWithMetadata,
-  OntologyTypeRecordId,
-  OwnedById,
   Subgraph,
 } from "@local/hash-subgraph";
 import { ontologyTypeRecordIdToVersionedUrl } from "@local/hash-subgraph";
@@ -95,7 +97,7 @@ export const createDataType: ImpureGraphFunction<
 };
 
 export const getDataTypes: ImpureGraphFunction<
-  Omit<GetDataTypesRequest, "includeDrafts">,
+  Omit<GetDataTypesParams, "includeDrafts">,
   Promise<DataTypeWithMetadata[]>
 > = async ({ graphApi }, { actorId }, request) =>
   graphApi
@@ -110,7 +112,7 @@ export const getDataTypes: ImpureGraphFunction<
  * @param params.query the structural query to filter data types by.
  */
 export const getDataTypeSubgraph: ImpureGraphFunction<
-  Omit<GetDataTypeSubgraphRequest, "includeDrafts">,
+  Omit<GetDataTypeSubgraphParams, "includeDrafts">,
   Promise<Subgraph<DataTypeRootType>>
 > = async ({ graphApi }, { actorId }, request) => {
   return await graphApi
@@ -158,14 +160,14 @@ export const getDataTypeById: ImpureGraphFunction<
  * If the type does not already exist within the Graph, and is an externally-hosted type, this will also load the type into the Graph.
  */
 export const getDataTypeSubgraphById: ImpureGraphFunction<
-  Omit<GetDataTypeSubgraphRequest, "filter" | "includeDrafts"> & {
+  Omit<GetDataTypeSubgraphParams, "filter" | "includeDrafts"> & {
     dataTypeId: VersionedUrl;
   },
   Promise<Subgraph<DataTypeRootType>>
 > = async (context, authentication, params) => {
   const { graphResolveDepths, temporalAxes, dataTypeId } = params;
 
-  const request: Omit<GetDataTypeSubgraphRequest, "includeDrafts"> = {
+  const request: Omit<GetDataTypeSubgraphParams, "includeDrafts"> = {
     filter: {
       equal: [{ path: ["versionedUrl"] }, { parameter: dataTypeId }],
     },

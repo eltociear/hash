@@ -13,8 +13,8 @@ use graph::{
 use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     knowledge::{
-        entity::ProvidedEntityEditionProvenance, Property, PropertyMetadataMap, PropertyObject,
-        PropertyPatchOperation, PropertyPath, PropertyProvenance,
+        entity::ProvidedEntityEditionProvenance, Property, PropertyMetadataObject, PropertyObject,
+        PropertyPatchOperation, PropertyPath,
     },
     owned_by_id::OwnedById,
 };
@@ -66,7 +66,7 @@ async fn insert() {
                 }],
                 properties: person.clone(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: false,
                 relationships: [],
@@ -137,7 +137,7 @@ async fn query() {
                 }],
                 properties: organization.clone(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: false,
                 relationships: [],
@@ -210,7 +210,7 @@ async fn update() {
                 }],
                 properties: page_v1.clone(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: false,
                 relationships: [],
@@ -220,7 +220,7 @@ async fn update() {
         .await
         .expect("could not create entity");
 
-    let v2_metadata = api
+    let v2 = api
         .patch_entity(
             api.account_id,
             PatchEntityParams {
@@ -228,8 +228,7 @@ async fn update() {
                 properties: vec![PropertyPatchOperation::Replace {
                     path: PropertyPath::default(),
                     value: Property::Object(page_v2.clone()),
-                    confidence: None,
-                    provenance: PropertyProvenance::default(),
+                    metadata: None,
                 }],
                 entity_type_ids: vec![],
                 archived: None,
@@ -246,7 +245,7 @@ async fn update() {
         .count_entities(
             api.account_id,
             CountEntitiesParams {
-                filter: Filter::for_entity_by_entity_id(v2_metadata.record_id.entity_id),
+                filter: Filter::for_entity_by_entity_id(v2.metadata.record_id.entity_id),
                 temporal_axes: QueryTemporalAxesUnresolved::DecisionTime {
                     pinned: PinnedTemporalAxisUnresolved::new(None),
                     variable: VariableTemporalAxisUnresolved::new(
@@ -265,7 +264,7 @@ async fn update() {
         .get_entities(
             api.account_id,
             GetEntitiesParams {
-                filter: Filter::for_entity_by_entity_id(v2_metadata.record_id.entity_id),
+                filter: Filter::for_entity_by_entity_id(v2.metadata.record_id.entity_id),
                 temporal_axes: QueryTemporalAxesUnresolved::DecisionTime {
                     pinned: PinnedTemporalAxisUnresolved::new(None),
                     variable: VariableTemporalAxisUnresolved::new(None, None),
@@ -318,12 +317,12 @@ async fn update() {
     assert_eq!(entity_v1.properties.properties(), page_v1.properties());
 
     let ClosedTemporalBound::Inclusive(entity_v2_timestamp) =
-        *v2_metadata.temporal_versioning.decision_time.start();
+        *v2.metadata.temporal_versioning.decision_time.start();
     let mut response_v2 = api
         .get_entities(
             api.account_id,
             GetEntitiesParams {
-                filter: Filter::for_entity_by_entity_id(v2_metadata.record_id.entity_id),
+                filter: Filter::for_entity_by_entity_id(v2.metadata.record_id.entity_id),
                 temporal_axes: QueryTemporalAxesUnresolved::DecisionTime {
                     pinned: PinnedTemporalAxisUnresolved::new(None),
                     variable: VariableTemporalAxisUnresolved::new(

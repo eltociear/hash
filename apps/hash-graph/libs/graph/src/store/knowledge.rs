@@ -1,4 +1,5 @@
-use std::{borrow::Cow, error::Error, fmt};
+use alloc::borrow::Cow;
+use core::{error::Error, fmt};
 
 use authorization::{schema::EntityRelationAndSubject, zanzibar::Consistency};
 use error_stack::Report;
@@ -11,7 +12,7 @@ use graph_types::{
             ProvidedEntityEditionProvenance,
         },
         link::LinkData,
-        Confidence, PropertyDiff, PropertyMetadataMap, PropertyObject, PropertyPatchOperation,
+        Confidence, PropertyDiff, PropertyMetadataObject, PropertyObject, PropertyPatchOperation,
         PropertyPath,
     },
     owned_by_id::OwnedById,
@@ -21,8 +22,7 @@ use temporal_versioning::{DecisionTime, Timestamp, TransactionTime};
 use type_system::{url::VersionedUrl, ClosedEntityType, EntityType};
 #[cfg(feature = "utoipa")]
 use utoipa::{
-    openapi,
-    openapi::{schema, Ref, RefOr, Schema},
+    openapi::{self, schema, Ref, RefOr, Schema},
     ToSchema,
 };
 use validation::ValidateEntityComponents;
@@ -189,8 +189,8 @@ pub struct CreateEntityParams<R> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<Confidence>,
     #[cfg_attr(feature = "utoipa", schema(nullable = false))]
-    #[serde(default, skip_serializing_if = "PropertyMetadataMap::is_empty")]
-    pub property_metadata: PropertyMetadataMap<'static>,
+    #[serde(default, skip_serializing_if = "PropertyMetadataObject::is_empty")]
+    pub property_metadata: PropertyMetadataObject,
     #[serde(default)]
     #[cfg_attr(feature = "utoipa", schema(nullable = false))]
     pub link_data: Option<LinkData>,
@@ -209,8 +209,12 @@ pub struct ValidateEntityParams<'a> {
     #[serde(borrow)]
     pub properties: Cow<'a, PropertyObject>,
     #[cfg_attr(feature = "utoipa", schema(nullable = false))]
-    #[serde(borrow, default, skip_serializing_if = "PropertyMetadataMap::is_empty")]
-    pub property_metadata: Cow<'a, PropertyMetadataMap<'a>>,
+    #[serde(
+        borrow,
+        default,
+        skip_serializing_if = "PropertyMetadataObject::is_empty"
+    )]
+    pub property_metadata: Cow<'a, PropertyMetadataObject>,
     #[serde(borrow, default)]
     #[cfg_attr(feature = "utoipa", schema(nullable = false))]
     pub link_data: Option<Cow<'a, LinkData>>,
@@ -451,7 +455,7 @@ pub trait EntityStore {
         &mut self,
         actor_id: AccountId,
         params: PatchEntityParams,
-    ) -> impl Future<Output = Result<EntityMetadata, Report<UpdateError>>> + Send;
+    ) -> impl Future<Output = Result<Entity, Report<UpdateError>>> + Send;
 
     fn diff_entity(
         &self,

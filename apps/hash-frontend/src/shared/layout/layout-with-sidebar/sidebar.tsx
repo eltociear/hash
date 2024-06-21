@@ -15,6 +15,7 @@ import { useEnabledFeatureFlags } from "../../../pages/shared/use-enabled-featur
 import { useActiveWorkspace } from "../../../pages/shared/workspace-context";
 import { useDraftEntities } from "../../draft-entities-context";
 import { SidebarToggleIcon } from "../../icons";
+import { BoltLightIcon } from "../../icons/bolt-light-icon";
 import { CogLightIcon } from "../../icons/cog-light-icon";
 import { InboxIcon } from "../../icons/inbox-icon";
 import { NoteIcon } from "../../icons/note-icon";
@@ -32,12 +33,27 @@ export const SIDEBAR_WIDTH = 260;
 
 type NavLinkDefinition = {
   title: string;
-  href: string;
+  path: string;
+  activeIfPathMatches?: RegExp;
   icon?: ReactNode;
   tooltipTitle?: string;
   count?: number;
   children?: Omit<NavLinkDefinition, "children" | "icon">[];
 };
+
+const isNavLinkActive = ({
+  definition,
+  currentPath,
+}: {
+  definition: NavLinkDefinition;
+  currentPath: string;
+}): boolean =>
+  definition.path === currentPath ||
+  (definition.activeIfPathMatches &&
+    !!currentPath.match(definition.activeIfPathMatches)) ||
+  !!definition.children?.some((child) =>
+    isNavLinkActive({ definition: child, currentPath }),
+  );
 
 export const PageSidebar: FunctionComponent = () => {
   const router = useRouter();
@@ -56,31 +72,68 @@ export const PageSidebar: FunctionComponent = () => {
 
   const { draftEntities } = useDraftEntities();
 
+  const workersSection = useMemo<NavLinkDefinition[]>(
+    () =>
+      enabledFeatureFlags.workers
+        ? [
+            {
+              title: "Workers",
+              path: enabledFeatureFlags.ai ? "/goals" : "/flows",
+              icon: <BoltLightIcon sx={{ fontSize: 16 }} />,
+              tooltipTitle: "",
+              activeIfPathMatches: /^\/@([^/]+)\/(flows|workers)\//,
+              children: [
+                ...(enabledFeatureFlags.ai
+                  ? [
+                      {
+                        title: "Goals",
+                        path: "/goals",
+                      },
+                    ]
+                  : []),
+                {
+                  title: "Flows",
+                  path: "/flows",
+                  activeIfPathMatches: /^\/@([^/]+)\/flows\//,
+                },
+                {
+                  title: "Activity Log",
+                  path: "/workers",
+                  activeIfPathMatches: /^\/@([^/]+)\/workers\//,
+                },
+              ],
+            },
+          ]
+        : [],
+    [enabledFeatureFlags],
+  );
+
   const navLinks = useMemo<NavLinkDefinition[]>(() => {
     const numberOfPendingActions = draftEntities?.length ?? 0;
 
     return [
       {
         title: "Home",
-        href: "/",
+        path: "/",
         icon: <FontAwesomeIcon icon={faHome} />,
         tooltipTitle: "",
       },
+      ...workersSection,
       {
         title: "Inbox",
-        href: "/inbox",
+        path: "/inbox",
         icon: <InboxIcon sx={{ fontSize: 16 }} />,
         tooltipTitle: "",
         count: (numberOfUnreadNotifications ?? 0) + numberOfPendingActions,
         children: [
           {
             title: "Notifications",
-            href: "/inbox",
+            path: "/inbox",
             count: numberOfUnreadNotifications,
           },
           {
             title: "Actions",
-            href: "/actions",
+            path: "/actions",
             count: numberOfPendingActions,
           },
         ],
@@ -89,7 +142,7 @@ export const PageSidebar: FunctionComponent = () => {
         ? [
             {
               title: "Notes",
-              href: "/notes",
+              path: "/notes",
               icon: <NoteIcon sx={{ fontSize: 16 }} />,
               tooltipTitle: "",
             },
@@ -99,7 +152,7 @@ export const PageSidebar: FunctionComponent = () => {
         ? [
             {
               title: "Instance Administration",
-              href: "/admin",
+              path: "/admin",
               icon: <CogLightIcon sx={{ fontSize: 16 }} />,
               tooltipTitle: "",
             },
@@ -111,6 +164,7 @@ export const PageSidebar: FunctionComponent = () => {
     numberOfUnreadNotifications,
     enabledFeatureFlags,
     isInstanceAdmin,
+    workersSection,
   ]);
 
   return (
@@ -151,33 +205,39 @@ export const PageSidebar: FunctionComponent = () => {
         </IconButton>
       </Box>
       {navLinks.map((navLink) => {
-        const isActive =
-          router.pathname === navLink.href ||
-          navLink.children?.some(
-            (childNavLink) => router.pathname === childNavLink.href,
-          );
+        const currentPath = router.asPath;
+
+        const isActive = isNavLinkActive({
+          definition: navLink,
+          currentPath,
+        });
 
         return (
-          <Fragment key={navLink.href}>
+          <Fragment key={navLink.path}>
             <TopNavLink
               icon={navLink.icon}
               title={navLink.title}
-              href={navLink.href}
+              href={navLink.path}
               tooltipTitle={navLink.tooltipTitle ?? ""}
               count={navLink.count}
               active={isActive}
             />
             <Collapse in={isActive}>
-              {navLink.children?.map((childNavLink) => {
-                const isChildActive = router.pathname === childNavLink.href;
+              {navLink.children?.map((definition) => {
+                const { path, title, tooltipTitle, count } = definition;
+
+                const isChildActive = isNavLinkActive({
+                  definition,
+                  currentPath,
+                });
 
                 return (
                   <TopNavLink
-                    key={childNavLink.href}
-                    title={childNavLink.title}
-                    href={childNavLink.href}
-                    tooltipTitle={childNavLink.tooltipTitle ?? ""}
-                    count={childNavLink.count}
+                    key={path}
+                    title={title}
+                    href={path}
+                    tooltipTitle={tooltipTitle ?? ""}
+                    count={count}
                     active={isChildActive}
                     sx={{
                       "&:hover": {

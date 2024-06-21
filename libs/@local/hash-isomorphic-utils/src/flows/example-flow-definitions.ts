@@ -1,4 +1,4 @@
-import type { EntityUuid } from "@local/hash-subgraph";
+import type { EntityUuid } from "@local/hash-graph-types/entity";
 
 import type {
   InputNameForAction,
@@ -7,7 +7,7 @@ import type {
 import type { FlowDefinition } from "./types";
 
 export const researchTaskFlowDefinition: FlowDefinition = {
-  name: "Research Task",
+  name: "Research task",
   flowDefinitionId: "research-task" as EntityUuid,
   description:
     "Conduct research on a given topic, and provide expert analysis on the discovered data",
@@ -19,7 +19,7 @@ export const researchTaskFlowDefinition: FlowDefinition = {
     outputs: [
       {
         payloadKind: "Text",
-        name: "Research guidance" as const,
+        name: "Research guidance",
         array: false,
         required: true,
       },
@@ -197,7 +197,7 @@ export const researchTaskFlowDefinition: FlowDefinition = {
 };
 
 export const researchEntitiesFlowDefinition: FlowDefinition = {
-  name: "Research Entities",
+  name: "Research entities",
   flowDefinitionId: "research-entities" as EntityUuid,
   description:
     "Discover entities according to a research brief, save them to HASH and Google Sheets",
@@ -209,7 +209,7 @@ export const researchEntitiesFlowDefinition: FlowDefinition = {
     outputs: [
       {
         payloadKind: "Text",
-        name: "Research guidance" as const,
+        name: "Research guidance",
         array: false,
         required: true,
       },
@@ -351,7 +351,7 @@ export const researchEntitiesFlowDefinition: FlowDefinition = {
 };
 
 export const ftseInvestorsFlowDefinition: FlowDefinition = {
-  name: "FTSE350 Investors",
+  name: "FTSE350 investors",
   flowDefinitionId: "ftse-350-investors" as EntityUuid,
   description:
     "Research the FTSE350 index, its constituents, and the top investors in the index",
@@ -569,7 +569,7 @@ export const ftseInvestorsFlowDefinition: FlowDefinition = {
 };
 
 export const inferUserEntitiesFromWebPageFlowDefinition: FlowDefinition = {
-  name: "Infer User Entities from Web Page",
+  name: "Analyze webpage entities",
   flowDefinitionId: "infer-user-entities-from-web-page" as EntityUuid,
   description:
     "Infer entities from a web page, based on the user's provided entity types",
@@ -672,7 +672,7 @@ export const inferUserEntitiesFromWebPageFlowDefinition: FlowDefinition = {
 };
 
 export const answerQuestionFlow: FlowDefinition = {
-  name: "Answer Question Flow",
+  name: "Answer question",
   flowDefinitionId: "answer-question-flow" as EntityUuid,
   description: "Answer a question based on the provided context",
   trigger: {
@@ -819,8 +819,8 @@ export const answerQuestionFlow: FlowDefinition = {
 };
 
 export const saveFileFromUrl: FlowDefinition = {
-  name: "Save File From Url",
-  flowDefinitionId: "saveFileFromUrl" as EntityUuid,
+  name: "Save file from URL",
+  flowDefinitionId: "save-file-from-url" as EntityUuid,
   description: "Save file from URL to HASH",
   trigger: {
     triggerDefinitionId: "userTrigger",
@@ -884,6 +884,109 @@ export const saveFileFromUrl: FlowDefinition = {
       stepOutputName: "fileEntity",
       name: "fileEntity",
       payloadKind: "PersistedEntity",
+      array: false,
+      required: true,
+    },
+  ],
+};
+
+export type GoalFlowTriggerInput =
+  | "Research guidance"
+  | "Entity Types"
+  | "Create as draft";
+
+export const goalFlowDefinition: FlowDefinition = {
+  name: "Research goal",
+  flowDefinitionId: "research-goal" as EntityUuid,
+  description:
+    "Discover entities according to a research brief, save them to HASH",
+  trigger: {
+    triggerDefinitionId: "userTrigger",
+    description:
+      "User provides research specification and entity types to discover",
+    kind: "trigger",
+    outputs: [
+      {
+        payloadKind: "Text",
+        name: "Research guidance" as const satisfies GoalFlowTriggerInput,
+        array: false,
+        required: true,
+      },
+      {
+        payloadKind: "VersionedUrl",
+        name: "Entity Types" satisfies GoalFlowTriggerInput,
+        array: true,
+        required: true,
+      },
+      {
+        payloadKind: "Boolean",
+        name: "Create as draft" satisfies GoalFlowTriggerInput,
+        array: false,
+        required: true,
+      },
+    ],
+  },
+  groups: [
+    {
+      groupId: 1,
+      description: "Research and persist entities",
+    },
+  ],
+  steps: [
+    {
+      stepId: "1",
+      kind: "action",
+      groupId: 1,
+      actionDefinitionId: "researchEntities",
+      description:
+        "Discover entities according to research specification, using public web sources",
+      inputSources: [
+        {
+          inputName: "prompt" satisfies InputNameForAction<"researchEntities">,
+          kind: "step-output",
+          sourceStepId: "trigger",
+          sourceStepOutputName: "Research guidance",
+        },
+        {
+          inputName:
+            "entityTypeIds" satisfies InputNameForAction<"researchEntities">,
+          kind: "step-output",
+          sourceStepId: "trigger",
+          sourceStepOutputName: "Entity Types",
+        },
+      ],
+    },
+    {
+      stepId: "2",
+      kind: "action",
+      groupId: 1,
+      description: "Save discovered entities and relationships to HASH graph",
+      actionDefinitionId: "persistEntities",
+      inputSources: [
+        {
+          inputName:
+            "proposedEntities" satisfies InputNameForAction<"persistEntities">,
+          kind: "step-output",
+          sourceStepId: "1",
+          sourceStepOutputName:
+            "proposedEntities" satisfies OutputNameForAction<"researchEntities">,
+        },
+        {
+          inputName: "draft" satisfies InputNameForAction<"persistEntities">,
+          kind: "step-output",
+          sourceStepId: "trigger",
+          sourceStepOutputName: "Create as draft",
+        },
+      ],
+    },
+  ],
+  outputs: [
+    {
+      stepId: "2",
+      stepOutputName:
+        "persistedEntities" satisfies OutputNameForAction<"persistEntities">,
+      payloadKind: "PersistedEntity",
+      name: "persistedEntities" as const,
       array: false,
       required: true,
     },

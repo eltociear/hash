@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use core::{error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;

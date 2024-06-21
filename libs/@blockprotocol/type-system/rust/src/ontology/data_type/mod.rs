@@ -1,7 +1,7 @@
-use core::fmt;
 #[cfg(feature = "postgres")]
-use std::error::Error;
-use std::{collections::HashMap, ptr};
+use core::error::Error;
+use core::{fmt, ptr};
+use std::collections::HashMap;
 
 pub use error::ParseDataTypeError;
 #[cfg(feature = "postgres")]
@@ -189,7 +189,7 @@ impl ValidateUrl for DataTypeReference {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use core::str::FromStr;
 
     use serde_json::json;
 

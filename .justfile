@@ -104,30 +104,24 @@ install-cargo-tool tool install version:
 
 [private]
 install-cargo-hack:
-  @just install-cargo-tool 'cargo hack' cargo-hack 0.6.7
+  @just install-cargo-tool 'cargo hack' cargo-hack 0.6.28
 
 [private]
 install-cargo-nextest:
-  @just install-cargo-tool 'cargo nextest' cargo-nextest 0.9.37
+  @just install-cargo-tool 'cargo nextest' cargo-nextest 0.9.68
 
 [private]
 install-llvm-cov:
-  @just install-cargo-tool 'cargo llvm-cov' cargo-llvm-cov 0.5.9
+  @just install-cargo-tool 'cargo llvm-cov' cargo-llvm-cov 0.6.9
 
 [private]
 install-cargo-insta:
-  @just install-cargo-tool 'cargo insta' cargo-insta 1.18.2
+  @just install-cargo-tool 'cargo insta' cargo-insta 1.39.0
 
 
 ######################################################################
 ## Predefined commands
 ######################################################################
-
-# Updates the compiler warnings in the `.cargo/config.toml` file.
-[private]
-[no-cd]
-lint-toml mode:
-  @cargo -Zscript run --manifest-path "{{repo}}/.github/scripts/rust/lint.rs" {{mode}} `cargo metadata --no-deps --format-version 1 | jq '.workspace_root' -r`
 
 # Runs all linting commands and fails if the CI would fail
 [no-cd]
@@ -151,7 +145,6 @@ format *arguments:
 # Lint the code using `clippy`
 [no-cd]
 clippy *arguments: install-cargo-hack
-  @just lint-toml "generate"
   @just in-pr cargo clippy --profile {{profile}} --all-features --all-targets --no-deps {{arguments}}
   @just not-in-pr cargo hack --optional-deps --feature-powerset clippy --profile {{profile}} --all-targets --no-deps {{arguments}}
 

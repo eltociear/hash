@@ -1,8 +1,6 @@
 //! Web routes for CRU operations on Data Types.
 
-#![expect(clippy::str_to_string)]
-
-use std::sync::Arc;
+use alloc::sync::Arc;
 
 use authorization::{
     backend::{ModifyRelationshipOperation, PermissionAssertion},
@@ -13,8 +11,8 @@ use authorization::{
     AuthorizationApi, AuthorizationApiPool,
 };
 use axum::{
-    extract::{OriginalUri, Path, Query},
-    http::{header::LINK, HeaderMap, StatusCode},
+    extract::Path,
+    http::StatusCode,
     response::Response,
     routing::{get, post, put},
     Extension, Router,
@@ -32,14 +30,10 @@ use graph::{
             GetDataTypesParams, GetDataTypesResponse, UnarchiveDataTypeParams,
             UpdateDataTypeEmbeddingParams, UpdateDataTypesParams,
         },
-        query::Filter,
         BaseUrlAlreadyExists, ConflictBehavior, DataTypeStore, OntologyVersionDoesNotExist,
         StorePool,
     },
-    subgraph::{
-        edges::GraphResolveDepths, identifier::DataTypeVertexId,
-        temporal_axes::QueryTemporalAxesUnresolved,
-    },
+    subgraph::identifier::DataTypeVertexId,
 };
 use graph_types::{
     ontology::{
@@ -64,7 +58,7 @@ use crate::rest::{
     json::Json,
     status::{report_to_response, status_to_response},
     utoipa_typedef::{subgraph::Subgraph, ListOrValue, MaybeListOfDataType},
-    AuthenticatedUserHeader, Cursor, Pagination, PermissionResponse, RestApiStore,
+    AuthenticatedUserHeader, PermissionResponse, RestApiStore,
 };
 
 #[derive(OpenApi)]
@@ -98,9 +92,9 @@ use crate::rest::{
             UpdateDataTypeRequest,
             UpdateDataTypeEmbeddingParams,
             DataTypeQueryToken,
-            GetDataTypesRequest,
+            GetDataTypesParams,
             GetDataTypesResponse,
-            GetDataTypeSubgraphRequest,
+            GetDataTypeSubgraphParams,
             GetDataTypeSubgraphResponse,
             ArchiveDataTypeParams,
             UnarchiveDataTypeParams,
@@ -190,7 +184,7 @@ struct CreateDataTypeRequest {
 )]
 #[tracing::instrument(
     level = "info",
-    skip(store_pool, authorization_api_pool, domain_validator)
+    skip(store_pool, authorization_api_pool, temporal_client, domain_validator)
 )]
 async fn create_data_type<S, A>(
     AuthenticatedUserHeader(actor_id): AuthenticatedUserHeader,
@@ -271,10 +265,11 @@ where
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[serde(untagged)]
+#[serde(deny_unknown_fields, untagged)]
 enum LoadExternalDataTypeRequest {
     #[serde(rename_all = "camelCase")]
     Fetch { data_type_id: VersionedUrl },
+    #[serde(rename_all = "camelCase")]
     Create {
         #[schema(value_type = VAR_DATA_TYPE)]
         schema: DataType,
@@ -283,7 +278,7 @@ enum LoadExternalDataTypeRequest {
             default,
             skip_serializing_if = "ProvidedOntologyEditionProvenance::is_empty"
         )]
-        provenance: ProvidedOntologyEditionProvenance,
+        provenance: Box<ProvidedOntologyEditionProvenance>,
     },
 }
 
@@ -305,7 +300,7 @@ enum LoadExternalDataTypeRequest {
 )]
 #[tracing::instrument(
     level = "info",
-    skip(store_pool, authorization_api_pool, domain_validator)
+    skip(store_pool, authorization_api_pool, temporal_client, domain_validator)
 )]
 async fn load_external_data_type<S, A>(
     AuthenticatedUserHeader(actor_id): AuthenticatedUserHeader,
@@ -371,7 +366,7 @@ where
                             },
                             relationships,
                             conflict_behavior: ConflictBehavior::Fail,
-                            provenance,
+                            provenance: *provenance,
                         },
                     )
                     .await
@@ -381,19 +376,10 @@ where
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct GetDataTypesRequest<'q> {
-    #[serde(borrow)]
-    filter: Filter<'q, DataTypeWithMetadata>,
-    temporal_axes: QueryTemporalAxesUnresolved,
-    include_drafts: bool,
-}
-
 #[utoipa::path(
     post,
     path = "/data-types/query",
-    request_body = GetDataTypesRequest,
+    request_body = GetDataTypesParams,
     tag = "DataType",
     params(
         ("X-Authenticated-User-Actor-Id" = AccountId, Header, description = "The ID of the actor which is used to authorize the request"),
@@ -404,25 +390,23 @@ struct GetDataTypesRequest<'q> {
             content_type = "application/json",
             body = GetDataTypesResponse,
             description = "Gets a a list of data types that satisfy the given query.",
-            headers(
-                ("Link" = String, description = "The link to be used to query the next page of data types"),
-            ),
         ),
 
         (status = 422, content_type = "text/plain", description = "Provided query is invalid"),
         (status = 500, description = "Store error occurred"),
     )
 )]
-#[tracing::instrument(level = "info", skip(store_pool, authorization_api_pool, request))]
+#[tracing::instrument(
+    level = "info",
+    skip(store_pool, authorization_api_pool, temporal_client, request)
+)]
 async fn get_data_types<S, A>(
     AuthenticatedUserHeader(actor_id): AuthenticatedUserHeader,
     store_pool: Extension<Arc<S>>,
     authorization_api_pool: Extension<Arc<A>>,
     temporal_client: Extension<Option<Arc<TemporalClient>>>,
-    Query(pagination): Query<Pagination<DataTypeVertexId>>,
-    OriginalUri(uri): OriginalUri,
     Json(request): Json<serde_json::Value>,
-) -> Result<(HeaderMap, Json<GetDataTypesResponse>), Response>
+) -> Result<Json<GetDataTypesResponse>, Response>
 where
     S: StorePool + Send + Sync,
     A: AuthorizationApiPool + Send + Sync,
@@ -439,53 +423,29 @@ where
 
     // Manually deserialize the query from a JSON value to allow borrowed deserialization and better
     // error reporting.
-    let mut request = GetDataTypesRequest::deserialize(&request).map_err(report_to_response)?;
+    let mut request = GetDataTypesParams::deserialize(&request).map_err(report_to_response)?;
     request
         .filter
         .convert_parameters()
         .map_err(report_to_response)?;
-    let response = store
-        .get_data_types(
-            actor_id,
-            GetDataTypesParams {
-                filter: request.filter,
-                after: pagination.after.map(|cursor| cursor.0),
-                limit: pagination.limit,
-                temporal_axes: request.temporal_axes,
-                include_drafts: request.include_drafts,
-            },
-        )
+    store
+        .get_data_types(actor_id, request)
         .await
-        .map_err(report_to_response)?;
-
-    let cursor = response.data_types.last().map(Cursor);
-    let mut headers = HeaderMap::new();
-    if let (Some(cursor), Some(limit)) = (cursor, pagination.limit) {
-        headers.insert(LINK, cursor.link_header("next", uri, limit)?);
-    }
-    Ok((headers, Json(response)))
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct GetDataTypeSubgraphRequest<'q> {
-    #[serde(borrow)]
-    filter: Filter<'q, DataTypeWithMetadata>,
-    graph_resolve_depths: GraphResolveDepths,
-    temporal_axes: QueryTemporalAxesUnresolved,
-    include_drafts: bool,
+        .map_err(report_to_response)
+        .map(Json)
 }
 
 #[derive(Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct GetDataTypeSubgraphResponse {
     subgraph: Subgraph,
+    cursor: Option<DataTypeVertexId>,
 }
 
 #[utoipa::path(
     post,
     path = "/data-types/query/subgraph",
-    request_body = GetDataTypeSubgraphRequest,
+    request_body = GetDataTypeSubgraphParams,
     tag = "DataType",
     params(
         ("X-Authenticated-User-Actor-Id" = AccountId, Header, description = "The ID of the actor which is used to authorize the request"),
@@ -496,25 +456,23 @@ struct GetDataTypeSubgraphResponse {
             content_type = "application/json",
             body = GetDataTypeSubgraphResponse,
             description = "Gets a subgraph rooted at all data types that satisfy the given query, each resolved to the requested depth.",
-            headers(
-                ("Link" = String, description = "The link to be used to query the next page of data types"),
-            ),
         ),
 
         (status = 422, content_type = "text/plain", description = "Provided query is invalid"),
         (status = 500, description = "Store error occurred"),
     )
 )]
-#[tracing::instrument(level = "info", skip(store_pool, authorization_api_pool, request))]
+#[tracing::instrument(
+    level = "info",
+    skip(store_pool, authorization_api_pool, temporal_client, request)
+)]
 async fn get_data_type_subgraph<S, A>(
     AuthenticatedUserHeader(actor_id): AuthenticatedUserHeader,
     store_pool: Extension<Arc<S>>,
     authorization_api_pool: Extension<Arc<A>>,
     temporal_client: Extension<Option<Arc<TemporalClient>>>,
-    Query(pagination): Query<Pagination<DataTypeVertexId>>,
-    OriginalUri(uri): OriginalUri,
     Json(request): Json<serde_json::Value>,
-) -> Result<(HeaderMap, Json<GetDataTypeSubgraphResponse>), Response>
+) -> Result<Json<GetDataTypeSubgraphResponse>, Response>
 where
     S: StorePool + Send + Sync,
     A: AuthorizationApiPool + Send + Sync,
@@ -532,37 +490,21 @@ where
     // Manually deserialize the query from a JSON value to allow borrowed deserialization and better
     // error reporting.
     let mut request =
-        GetDataTypeSubgraphRequest::deserialize(&request).map_err(report_to_response)?;
+        GetDataTypeSubgraphParams::deserialize(&request).map_err(report_to_response)?;
     request
         .filter
         .convert_parameters()
         .map_err(report_to_response)?;
-    let response = store
-        .get_data_type_subgraph(
-            actor_id,
-            GetDataTypeSubgraphParams {
-                filter: request.filter,
-                graph_resolve_depths: request.graph_resolve_depths,
-                after: pagination.after.map(|cursor| cursor.0),
-                limit: pagination.limit,
-                temporal_axes: request.temporal_axes,
-                include_drafts: request.include_drafts,
-            },
-        )
+    store
+        .get_data_type_subgraph(actor_id, request)
         .await
-        .map_err(report_to_response)?;
-
-    let cursor = response.subgraph.roots.iter().last().map(Cursor);
-    let mut headers = HeaderMap::new();
-    if let (Some(cursor), Some(limit)) = (cursor, pagination.limit) {
-        headers.insert(LINK, cursor.link_header("next", uri, limit)?);
-    }
-    Ok((
-        headers,
-        Json(GetDataTypeSubgraphResponse {
-            subgraph: Subgraph::from(response.subgraph),
-        }),
-    ))
+        .map_err(report_to_response)
+        .map(|response| {
+            Json(GetDataTypeSubgraphResponse {
+                subgraph: Subgraph::from(response.subgraph),
+                cursor: response.cursor,
+            })
+        })
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -597,7 +539,10 @@ struct UpdateDataTypeRequest {
     ),
     request_body = UpdateDataTypeRequest,
 )]
-#[tracing::instrument(level = "info", skip(store_pool, authorization_api_pool))]
+#[tracing::instrument(
+    level = "info",
+    skip(store_pool, authorization_api_pool, temporal_client)
+)]
 async fn update_data_type<S, A>(
     AuthenticatedUserHeader(actor_id): AuthenticatedUserHeader,
     store_pool: Extension<Arc<S>>,
@@ -679,7 +624,10 @@ where
     ),
     request_body = UpdateDataTypeEmbeddingParams,
 )]
-#[tracing::instrument(level = "info", skip(store_pool, authorization_api_pool))]
+#[tracing::instrument(
+    level = "info",
+    skip(store_pool, authorization_api_pool, temporal_client, body)
+)]
 async fn update_data_type_embeddings<S, A>(
     AuthenticatedUserHeader(actor_id): AuthenticatedUserHeader,
     store_pool: Extension<Arc<S>>,
@@ -730,7 +678,10 @@ where
     ),
     request_body = ArchiveDataTypeParams,
 )]
-#[tracing::instrument(level = "info", skip(store_pool, authorization_api_pool))]
+#[tracing::instrument(
+    level = "info",
+    skip(store_pool, authorization_api_pool, temporal_client)
+)]
 async fn archive_data_type<S, A>(
     AuthenticatedUserHeader(actor_id): AuthenticatedUserHeader,
     store_pool: Extension<Arc<S>>,
@@ -790,7 +741,10 @@ where
     ),
     request_body = UnarchiveDataTypeParams,
 )]
-#[tracing::instrument(level = "info", skip(store_pool, authorization_api_pool))]
+#[tracing::instrument(
+    level = "info",
+    skip(store_pool, authorization_api_pool, temporal_client)
+)]
 async fn unarchive_data_type<S, A>(
     AuthenticatedUserHeader(actor_id): AuthenticatedUserHeader,
     store_pool: Extension<Arc<S>>,

@@ -1,9 +1,9 @@
 import type { EntityType } from "@blockprotocol/type-system";
+import type { BaseUrl } from "@local/hash-graph-types/ontology";
 import {
   blockProtocolPropertyTypes,
   systemEntityTypes,
 } from "@local/hash-isomorphic-utils/ontology-type-ids";
-import type { BaseUrl } from "@local/hash-subgraph";
 import { linkEntityTypeUrl } from "@local/hash-subgraph";
 
 import { getEntityTypeById } from "../../../ontology/primitive/entity-type";
@@ -103,7 +103,9 @@ const migrate: MigrationFunction = async ({
     {
       entityTypeDefinition: {
         title: "Flow Definition",
-        description: "The definition of  a HASH flow.",
+        description: "The definition of a HASH flow.",
+        labelProperty: blockProtocolPropertyTypes.name
+          .propertyTypeBaseUrl as BaseUrl,
         properties: [
           {
             propertyType: blockProtocolPropertyTypes.name.propertyTypeId,
@@ -135,7 +137,7 @@ const migrate: MigrationFunction = async ({
   );
 
   /**
-   * Step 2: create the `Flow` entity type.
+   * Step 2: create the `Flow Run` entity type.
    */
 
   const outputsPropertyType = await createSystemPropertyTypeIfNotExists(
@@ -223,9 +225,15 @@ const migrate: MigrationFunction = async ({
     authentication,
     {
       entityTypeDefinition: {
-        title: "Flow",
-        description: "A HASH flow run.",
+        title: "Flow Run",
+        description: "An execution run of a flow.",
+        labelProperty: blockProtocolPropertyTypes.name
+          .propertyTypeBaseUrl as BaseUrl,
         properties: [
+          {
+            propertyType: blockProtocolPropertyTypes.name.propertyTypeId,
+            required: true,
+          },
           {
             propertyType: triggerPropertyType,
             required: true,
@@ -250,8 +258,7 @@ const migrate: MigrationFunction = async ({
   );
 
   /**
-   * Step 3: create a `Incurred In` link entity type, and update
-   * the `Usage Record` entity type to have it as an outgoing link to a `Flow`.
+   * Step 3: create a `Incurred In` link entity type
    */
 
   const incurredInLinkEntityType = await createSystemEntityTypeIfNotExists(
@@ -270,6 +277,12 @@ const migrate: MigrationFunction = async ({
     },
   );
 
+  /**
+   * Step 4: Update the Usage Record entity type to:
+   * 1. Accept an 'Incurred In' link
+   * 2. Accept custom metadata
+   */
+
   const currentUsageRecordEntityTypeId = getCurrentHashSystemEntityTypeId({
     entityTypeKey: "usageRecord",
     migrationState,
@@ -283,8 +296,28 @@ const migrate: MigrationFunction = async ({
     },
   );
 
+  const customMetadataPropertyType = await createSystemPropertyTypeIfNotExists(
+    context,
+    authentication,
+    {
+      propertyTypeDefinition: {
+        title: "Custom Metadata",
+        description: "Additional information about something.",
+        possibleValues: [{ primitiveDataType: "object" }],
+      },
+      webShortname: "hash",
+      migrationState,
+    },
+  );
+
   const newUsageRecordEntityTypeSchema: EntityType = {
     ...usageRecordEntityTypeSchema,
+    properties: {
+      ...usageRecordEntityTypeSchema.properties,
+      [customMetadataPropertyType.metadata.recordId.baseUrl]: {
+        $ref: customMetadataPropertyType.schema.$id,
+      },
+    },
     links: {
       ...usageRecordEntityTypeSchema.links,
       [incurredInLinkEntityType.schema.$id]: {

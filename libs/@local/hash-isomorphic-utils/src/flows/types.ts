@@ -1,15 +1,17 @@
 import type { VersionedUrl } from "@blockprotocol/type-system";
+import type { DistributiveOmit } from "@local/advanced-types/distribute";
+import type { ProvidedEntityEditionProvenance } from "@local/hash-graph-client";
+import type { SerializedEntity } from "@local/hash-graph-sdk/entity";
+import type { AccountId } from "@local/hash-graph-types/account";
 import type {
-  PropertyMetadataMap,
-  ProvidedEntityEditionProvenance,
-} from "@local/hash-graph-client";
-import type { ActorTypeDataType } from "@local/hash-isomorphic-utils/system-types/google/googlesheetsfile";
-import type {
-  Entity,
   EntityId,
   EntityPropertiesObject,
   EntityUuid,
-} from "@local/hash-subgraph";
+  PropertyMetadataObject,
+} from "@local/hash-graph-types/entity";
+import type { OwnedById } from "@local/hash-graph-types/web";
+import type { FlowRun } from "@local/hash-isomorphic-utils/graphql/api-types.gen";
+import type { ActorTypeDataType } from "@local/hash-isomorphic-utils/system-types/google/googlesheetsfile";
 import type { Status } from "@local/status";
 
 import type { ActionDefinitionId } from "./action-definitions";
@@ -23,6 +25,7 @@ export type WebPage = {
   url: string;
   title: string;
   htmlContent: string;
+  innerText: string;
 };
 
 type LocalOrExistingEntityId =
@@ -35,7 +38,7 @@ type LocalOrExistingEntityId =
  */
 export type ProposedEntity = {
   provenance?: ProvidedEntityEditionProvenance;
-  propertyMetadata?: PropertyMetadataMap;
+  propertyMetadata?: PropertyMetadataObject;
   localEntityId: string;
   entityTypeId: VersionedUrl;
   summary?: string;
@@ -55,13 +58,13 @@ export type ProposedEntityWithResolvedLinks = Omit<
 };
 
 export type PersistedEntity = {
-  entity?: Entity;
-  existingEntity?: Entity;
+  entity?: SerializedEntity;
+  existingEntity?: SerializedEntity;
   operation: "create" | "update" | "already-exists-as-proposed";
 };
 
 export type FailedEntityProposal = {
-  existingEntity?: Entity;
+  existingEntity?: SerializedEntity;
   operation?: "create" | "update" | "already-exists-as-proposed";
   proposedEntity: ProposedEntityWithResolvedLinks;
   message: string;
@@ -71,6 +74,14 @@ export type PersistedEntities = {
   persistedEntities: PersistedEntity[];
   failedEntityProposals: FailedEntityProposal[];
 };
+
+export type FlowInputs = [
+  {
+    flowDefinition: FlowDefinition;
+    flowTrigger: FlowTrigger;
+    webId: OwnedById;
+  },
+];
 
 export const textFormats = ["CSV", "HTML", "Markdown", "Plain"] as const;
 
@@ -86,7 +97,7 @@ export type GoogleSheet = { spreadsheetId: string } | { newSheetName: string };
 export type PayloadKindValues = {
   ActorType: ActorTypeDataType;
   Boolean: boolean;
-  Entity: Entity;
+  Entity: SerializedEntity;
   EntityId: EntityId;
   FormattedText: FormattedText;
   GoogleAccountId: string;
@@ -324,39 +335,50 @@ export type ParallelGroupStep = {
 
 export type FlowStep = ActionStep | ParallelGroupStep;
 
-/**
- * Flow
- */
-
 export type FlowTrigger = {
   triggerDefinitionId: TriggerDefinitionId;
   outputs?: StepOutput[];
 };
 
-export type Flow = {
-  flowId: EntityUuid;
+export type LocalFlowRun = {
+  name: string;
+  flowRunId: EntityUuid;
   trigger: FlowTrigger;
   flowDefinitionId: EntityUuid;
   steps: FlowStep[];
   outputs?: StepOutput[];
 };
 
-type ProgressLogBase = {
+export type ProgressLogBase = {
   recordedAt: string;
   stepId: string;
 };
 
 export type QueriedWebLog = ProgressLogBase & {
+  explanation: string;
   query: string;
   type: "QueriedWeb";
 };
 
+export type CreatedPlanLog = ProgressLogBase & {
+  plan: string;
+  type: "CreatedPlan";
+};
+
 export type VisitedWebPageLog = ProgressLogBase & {
+  explanation: string;
   webPage: Pick<WebPage, "url" | "title">;
   type: "VisitedWebPage";
 };
 
+export type StartedSubTaskLog = ProgressLogBase & {
+  explanation: string;
+  goal: string;
+  type: "StartedSubTask";
+};
+
 export type ViewedFile = {
+  explanation: string;
   fileUrl: string;
   recordedAt: string;
   stepId: string;
@@ -374,11 +396,13 @@ export type PersistedEntityLog = ProgressLogBase & {
 };
 
 export type StepProgressLog =
+  | CreatedPlanLog
   | PersistedEntityLog
   | ProposedEntityLog
   | VisitedWebPageLog
   | ViewedFile
-  | QueriedWebLog;
+  | QueriedWebLog
+  | StartedSubTaskLog;
 
 export type ProgressLogSignal = {
   attempt: number;
@@ -389,7 +413,7 @@ type ExternalInputRequestType = "human-input" | "get-urls-html-content";
 
 type ExternalInputRequestDataByType = {
   "human-input": {
-    question: string;
+    questions: string[];
   };
   "get-urls-html-content": {
     urls: string[];
@@ -409,7 +433,7 @@ export type ExternalInputRequestSignal<
 
 export type ExternalInputResponseByType = {
   "human-input": {
-    answer: string;
+    answers: string[];
   };
   "get-urls-html-content": {
     webPages: WebPage[];
@@ -420,15 +444,41 @@ export type ExternalInputResponseSignal<
   RequestType extends ExternalInputRequestType = ExternalInputRequestType,
 > = {
   [Type in RequestType]: {
+    resolvedBy: AccountId;
     requestId: string;
     type: Type;
     data: ExternalInputResponseByType[Type];
   };
 }[RequestType];
 
+export type ExternalInputResponseWithoutUser = DistributiveOmit<
+  ExternalInputResponseSignal,
+  "resolvedBy"
+>;
+
 export type ExternalInputRequest = ExternalInputRequestSignal & {
-  /** The answer given by the human, if it was a request for human input */
-  answer?: string;
-  /** Whether or not the request has been resolved */
-  resolved: boolean;
+  /** The answers given by the human, if it was a request for human input */
+  answers?: string[];
+  /** The time at which the request was resolved */
+  resolvedAt?: string;
+  /** The user that responded to the request (or the user whose device responded to the request) */
+  resolvedBy?: AccountId;
+  /** The time at which the request was made */
+  raisedAt: string;
 };
+
+export type FlowUsageRecordCustomMetadata = {
+  taskName?: string;
+  stepId?: string;
+};
+
+export const detailedFlowFields = [
+  "inputs",
+  "inputRequests",
+  "outputs",
+  "steps",
+] as const;
+
+export type DetailedFlowField = (typeof detailedFlowFields)[number];
+
+export type SparseFlowRun = Omit<FlowRun, DetailedFlowField>;

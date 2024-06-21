@@ -1,6 +1,7 @@
+import type { Entity } from "@local/hash-graph-sdk/entity";
+import type { OwnedById } from "@local/hash-graph-types/web";
 import { simplifyProperties } from "@local/hash-isomorphic-utils/simplify-properties";
 import type { ServiceFeatureProperties } from "@local/hash-isomorphic-utils/system-types/shared";
-import type { Entity, OwnedById } from "@local/hash-subgraph";
 import { linkEntityTypeUrl } from "@local/hash-subgraph";
 
 import { logger } from "../../../../logger";
@@ -313,6 +314,18 @@ const migrate: MigrationFunction = async ({
       featureName: "gpt-4-turbo",
       inputUnitCost: 0.00001,
       outputUnitCost: 0.00003,
+    },
+    {
+      serviceName: "OpenAI",
+      featureName: "gpt-4o",
+      inputUnitCost: 0.000005,
+      outputUnitCost: 0.000015,
+    },
+    {
+      serviceName: "OpenAI",
+      featureName: "gpt-4o-2024-05-13",
+      inputUnitCost: 0.000005,
+      outputUnitCost: 0.000015,
     },
     /** @see https://www.anthropic.com/api */
     {

@@ -1,4 +1,4 @@
-use std::{
+use core::{
     error::Error,
     fmt,
     fmt::{Display, Formatter},

@@ -1,5 +1,5 @@
 #[cfg(feature = "postgres")]
-use std::error::Error;
+use core::error::Error;
 
 #[cfg(feature = "postgres")]
 use bytes::BytesMut;
@@ -11,6 +11,7 @@ use crate::knowledge::entity::SourceProvenance;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PropertyProvenance {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<SourceProvenance>,

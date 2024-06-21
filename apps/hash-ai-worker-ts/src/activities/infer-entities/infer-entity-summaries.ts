@@ -1,17 +1,16 @@
 import type { VersionedUrl } from "@blockprotocol/type-system/slim";
 import type { GraphApi } from "@local/hash-graph-client";
-import type {
-  AccountId,
-  Entity,
-  EntityId,
-  OwnedById,
-} from "@local/hash-subgraph";
+import type { Entity } from "@local/hash-graph-sdk/entity";
+import type { AccountId } from "@local/hash-graph-types/account";
+import type { EntityId } from "@local/hash-graph-types/entity";
+import type { OwnedById } from "@local/hash-graph-types/web";
 import type { Status } from "@local/status";
 import { StatusCode } from "@local/status";
 import dedent from "dedent";
 import type OpenAI from "openai";
 
 import { logger } from "../shared/activity-logger";
+import { getFlowContext } from "../shared/get-flow-context";
 import { getLlmResponse } from "../shared/get-llm-response";
 import {
   getTextContentFromLlmMessage,
@@ -89,6 +88,8 @@ export const inferEntitySummaries = async (params: {
       !!existingEntities && existingEntities.length > 0,
   });
 
+  const { stepId } = await getFlowContext();
+
   const llmResponse = await getLlmResponse(
     {
       ...completionPayload,
@@ -99,6 +100,10 @@ export const inferEntitySummaries = async (params: {
       tools,
     },
     {
+      customMetadata: {
+        taskName: "infer-entity-summaries",
+        stepId,
+      },
       userAccountId,
       graphApiClient,
       incurredInEntities: flowEntityId ? [{ entityId: flowEntityId }] : [],
@@ -110,7 +115,9 @@ export const inferEntitySummaries = async (params: {
     return {
       code: StatusCode.Internal,
       contents: [],
-      message: `Error getting LLM response: ${"message" in llmResponse ? llmResponse.message : llmResponse.status}`,
+      message: `Error getting LLM response: ${
+        "message" in llmResponse ? llmResponse.message : llmResponse.status
+      }`,
     };
   }
 
@@ -318,15 +325,21 @@ export const inferEntitySummaries = async (params: {
           ({ isLink }) => isLink,
         );
 
-        const missingContentKinds = `${isMissingEntities ? "entities" : ""}${isMissingEntities && isMissingLinks ? " or " : ""}${isMissingLinks ? "links" : ""}`;
+        const missingContentKinds = `${isMissingEntities ? "entities" : ""}${
+          isMissingEntities && isMissingLinks ? " or " : ""
+        }${isMissingLinks ? "links" : ""}`;
 
         retryMessages.push({
           content: dedent(`
             You did not suggest any ${missingContentKinds} of the following types: ${typesWithNoSuggestionsToRerequest
               .map(({ schema }) => schema.$id)
               .join(", ")}.
-            
-            Please reconsider the input text to see if you can identify any ${missingContentKinds} of those types${existingEntities && existingEntities.length > 0 && isMissingLinks ? ", including whether any links can be created to the existing entities provided." : "."}
+
+            Please reconsider the input text to see if you can identify any ${missingContentKinds} of those types${
+              existingEntities && existingEntities.length > 0 && isMissingLinks
+                ? ", including whether any links can be created to the existing entities provided."
+                : "."
+            }
           `),
           role: "user",
         });

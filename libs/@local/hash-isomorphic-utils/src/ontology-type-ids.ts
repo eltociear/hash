@@ -55,25 +55,19 @@ export const systemEntityTypes = {
     entityTypeId: "https://hash.ai/@hash/types/entity-type/file/v/2",
     entityTypeBaseUrl: "https://hash.ai/@hash/types/entity-type/file/",
   },
-  flow: {
-    entityTypeId: "https://hash.ai/@hash/types/entity-type/flow/v/1",
-    entityTypeBaseUrl: "https://hash.ai/@hash/types/entity-type/flow/",
-  },
   flowDefinition: {
     entityTypeId: "https://hash.ai/@hash/types/entity-type/flow-definition/v/1",
     entityTypeBaseUrl:
       "https://hash.ai/@hash/types/entity-type/flow-definition/",
   },
+  flowRun: {
+    entityTypeId: "https://hash.ai/@hash/types/entity-type/flow-run/v/1",
+    entityTypeBaseUrl: "https://hash.ai/@hash/types/entity-type/flow-run/",
+  },
   githubAccount: {
     entityTypeId: "https://hash.ai/@hash/types/entity-type/github-account/v/1",
     entityTypeBaseUrl:
       "https://hash.ai/@hash/types/entity-type/github-account/",
-  },
-  googleSheetsIntegration: {
-    entityTypeId:
-      "https://hash.ai/@hash/types/entity-type/google-sheets-integration/v/1",
-    entityTypeBaseUrl:
-      "https://hash.ai/@hash/types/entity-type/google-sheets-integration/",
   },
   graphChangeNotification: {
     entityTypeId:
@@ -148,6 +142,12 @@ export const systemEntityTypes = {
   profileBio: {
     entityTypeId: "https://hash.ai/@hash/types/entity-type/profile-bio/v/1",
     entityTypeBaseUrl: "https://hash.ai/@hash/types/entity-type/profile-bio/",
+  },
+  prospectiveUser: {
+    entityTypeId:
+      "https://hash.ai/@hash/types/entity-type/prospective-user/v/1",
+    entityTypeBaseUrl:
+      "https://hash.ai/@hash/types/entity-type/prospective-user/",
   },
   quickNote: {
     entityTypeId: "https://hash.ai/@hash/types/entity-type/quick-note/v/1",
@@ -381,6 +381,12 @@ export const systemPropertyTypes = {
     propertyTypeBaseUrl:
       "https://hash.ai/@hash/types/property-type/connection-source-name/",
   },
+  currentApproach: {
+    propertyTypeId:
+      "https://hash.ai/@hash/types/property-type/current-approach/v/1",
+    propertyTypeBaseUrl:
+      "https://hash.ai/@hash/types/property-type/current-approach/",
+  },
   dataAudience: {
     propertyTypeId:
       "https://hash.ai/@hash/types/property-type/data-audience/v/1",
@@ -504,6 +510,12 @@ export const systemPropertyTypes = {
     propertyTypeBaseUrl:
       "https://hash.ai/@hash/types/property-type/input-unit-count/",
   },
+  intendedUse: {
+    propertyTypeId:
+      "https://hash.ai/@hash/types/property-type/intended-use/v/1",
+    propertyTypeBaseUrl:
+      "https://hash.ai/@hash/types/property-type/intended-use/",
+  },
   kratosIdentityId: {
     propertyTypeId:
       "https://hash.ai/@hash/types/property-type/kratos-identity-id/v/1",
@@ -610,6 +622,10 @@ export const systemPropertyTypes = {
     propertyTypeBaseUrl:
       "https://hash.ai/@hash/types/property-type/resolved-at/",
   },
+  role: {
+    propertyTypeId: "https://hash.ai/@hash/types/property-type/role/v/1",
+    propertyTypeBaseUrl: "https://hash.ai/@hash/types/property-type/role/",
+  },
   rotationInRads: {
     propertyTypeId:
       "https://hash.ai/@hash/types/property-type/rotation-in-rads/v/1",
@@ -700,6 +716,12 @@ export const systemPropertyTypes = {
     propertyTypeBaseUrl:
       "https://hash.ai/@hash/types/property-type/width-in-pixels/",
   },
+  willingToPay: {
+    propertyTypeId:
+      "https://hash.ai/@hash/types/property-type/willing-to-pay/v/1",
+    propertyTypeBaseUrl:
+      "https://hash.ai/@hash/types/property-type/willing-to-pay/",
+  },
   xPosition: {
     propertyTypeId: "https://hash.ai/@hash/types/property-type/x-position/v/1",
     propertyTypeBaseUrl:
@@ -753,6 +775,18 @@ export const systemDataTypes = {
     title: "GBP",
     description: "An amount denominated in British pounds sterling",
   },
+  gigabytes: {
+    dataTypeId: "https://hash.ai/@hash/types/data-type/gigabytes/v/1",
+    dataTypeBaseUrl: "https://hash.ai/@hash/types/data-type/gigabytes/",
+    title: "Gigabytes",
+    description: "A unit of information equal to one billion bytes.",
+  },
+  gigahertz: {
+    dataTypeId: "https://hash.ai/@hash/types/data-type/gigahertz/v/1",
+    dataTypeBaseUrl: "https://hash.ai/@hash/types/data-type/gigahertz/",
+    title: "Gigahertz",
+    description: "A unit of frequency equal to one billion hertz.",
+  },
   kilometers: {
     dataTypeId: "https://hash.ai/@hash/types/data-type/kilometers/v/1",
     dataTypeBaseUrl: "https://hash.ai/@hash/types/data-type/kilometers/",
@@ -799,6 +833,13 @@ export const systemDataTypes = {
     dataTypeBaseUrl: "https://hash.ai/@hash/types/data-type/usd/",
     title: "USD",
     description: "An amount denominated in US Dollars",
+  },
+  watts: {
+    dataTypeId: "https://hash.ai/@hash/types/data-type/watts/v/1",
+    dataTypeBaseUrl: "https://hash.ai/@hash/types/data-type/watts/",
+    title: "Watts",
+    description:
+      "A unit of length in the International System of Units (SI), equal to one thousandth of a meter.",
   },
 } as const;
 

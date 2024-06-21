@@ -1,7 +1,8 @@
 import type { VersionedUrl } from "@blockprotocol/type-system";
 import { typedEntries } from "@local/advanced-types/typed-entries";
+import type { Entity } from "@local/hash-graph-sdk/entity";
+import type { EntityId } from "@local/hash-graph-types/entity";
 import type { ProposedEntity } from "@local/hash-isomorphic-utils/ai-inference-types";
-import type { Entity, EntityId } from "@local/hash-subgraph";
 import type { Status } from "@local/status";
 import { StatusCode } from "@local/status";
 import { Context } from "@temporalio/activity";
@@ -17,7 +18,6 @@ import type {
 import { getToolCallsFromLlmAssistantMessage } from "../shared/get-llm-response/llm-message";
 import { graphApiClient } from "../shared/graph-api-client";
 import { logProgress } from "../shared/log-progress";
-import { openAiSeed } from "../shared/open-ai-seed";
 import { stringify } from "../shared/stringify";
 import { inferEntitiesSystemPrompt } from "./infer-entities-system-prompt";
 import type {
@@ -181,7 +181,8 @@ export const proposeEntities = async (params: {
 
   logger.debug(`Next messages to model: ${stringify(messages)}`);
 
-  const { userAuthentication, flowEntityId, webId } = await getFlowContext();
+  const { userAuthentication, flowEntityId, stepId, webId } =
+    await getFlowContext();
 
   const llmResponse = await getLlmResponse(
     {
@@ -195,9 +196,12 @@ export const proposeEntities = async (params: {
        * so set the `temperature` to `0`.
        */
       temperature: 0,
-      seed: openAiSeed,
     },
     {
+      customMetadata: {
+        stepId,
+        taskName: "propose-entities",
+      },
       userAccountId: userAuthentication.actorId,
       graphApiClient,
       incurredInEntities: [{ entityId: flowEntityId }],
@@ -463,7 +467,7 @@ export const proposeEntities = async (params: {
 
           if (invalidProposedEntities.length > 0) {
             retryMessageContentText += dedent(`
-              Some of the entities you suggested for creation were invalid. Please review their properties and try again. 
+              Some of the entities you suggested for creation were invalid. Please review their properties and try again.
               The entities you should review and make a 'create_entities' call for are:
               ${invalidProposedEntities
                 .map(

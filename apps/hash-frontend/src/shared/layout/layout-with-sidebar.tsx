@@ -56,16 +56,21 @@ export const LayoutWithSidebar: FunctionComponent<LayoutWithSidebarProps> = ({
             width: "100%",
             position: "relative",
             marginLeft: `-${SIDEBAR_WIDTH}px`,
+            overflowX: "hidden",
             transition: theme.transitions.create("margin", {
               easing: theme.transitions.easing.easeOut,
               duration: theme.transitions.duration.enteringScreen,
             }),
-            ...(sidebarOpen && {
+            ...((sidebarOpen || isReadonlyMode) && {
               marginLeft: 0,
             }),
           })}
         >
-          <Collapse orientation="horizontal" timeout={100} in={!sidebarOpen}>
+          <Collapse
+            orientation="horizontal"
+            timeout={100}
+            in={!isReadonlyMode && !sidebarOpen}
+          >
             <Stack
               alignItems="center"
               sx={({ palette, zIndex }) => ({

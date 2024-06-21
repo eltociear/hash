@@ -12,6 +12,7 @@ const actionDefinitionIds = [
   "getFileFromUrl",
   "getWebPageByUrl",
   "getWebPageSummary",
+  "processAutomaticBrowsingSettings",
   "inferEntitiesFromContent",
   "persistEntities",
   "persistEntity",
@@ -21,8 +22,6 @@ const actionDefinitionIds = [
 ] as const;
 
 export type ActionDefinitionId = (typeof actionDefinitionIds)[number];
-
-const defaultModel: InferenceModelName = "gpt-4-turbo";
 
 const actionDefinitionsAsConst = {
   generateWebQueries: {
@@ -44,7 +43,7 @@ const actionDefinitionsAsConst = {
         array: false,
         default: {
           kind: "Text",
-          value: defaultModel,
+          value: "gpt-4-turbo" satisfies InferenceModelName,
         },
       },
     ],
@@ -112,6 +111,44 @@ const actionDefinitionsAsConst = {
       },
     ],
   },
+  processAutomaticBrowsingSettings: {
+    actionDefinitionId: "processAutomaticBrowsingSettings",
+    name: "Process Automatic Browsing Settings",
+    description:
+      "Given a web page, determine which entities to find based on the user's settings.",
+    kind: "action",
+    inputs: [
+      {
+        oneOfPayloadKinds: ["WebPage"],
+        name: "webPage",
+        required: true,
+        array: false,
+      },
+    ],
+    outputs: [
+      {
+        payloadKind: "VersionedUrl",
+        name: "entityTypeIds",
+        description: "The entityTypeIds to look for given the web page visited",
+        array: true,
+        required: true,
+      },
+      {
+        payloadKind: "Boolean",
+        name: "draft",
+        description: "Whether or not the entities should be created as drafts",
+        array: false,
+        required: true,
+      },
+      {
+        payloadKind: "Text",
+        name: "model",
+        description: "The LLM model to use to infer entities",
+        required: true,
+        array: false,
+      },
+    ],
+  },
   inferEntitiesFromContent: {
     actionDefinitionId: "inferEntitiesFromContent",
     name: "Infer Entities From Content",
@@ -136,7 +173,7 @@ const actionDefinitionsAsConst = {
         required: true,
         default: {
           kind: "Text",
-          value: defaultModel,
+          value: "gpt-4-turbo" satisfies InferenceModelName,
         },
         array: false,
       },
@@ -320,7 +357,7 @@ const actionDefinitionsAsConst = {
         array: false,
         default: {
           kind: "Text",
-          value: defaultModel,
+          value: "claude-3-haiku" satisfies InferenceModelName,
         },
       },
       {
@@ -338,6 +375,12 @@ const actionDefinitionsAsConst = {
       {
         payloadKind: "Text",
         name: "summary",
+        array: false,
+        required: true,
+      },
+      {
+        payloadKind: "Text",
+        name: "title",
         array: false,
         required: true,
       },

@@ -1,8 +1,6 @@
 import { sleep } from "@local/hash-backend-utils/utils";
-import {
-  type ActionDefinitionId,
-  actionDefinitions,
-} from "@local/hash-isomorphic-utils/flows/action-definitions";
+import type { EntityUuid } from "@local/hash-graph-types/entity";
+import { actionDefinitions } from "@local/hash-isomorphic-utils/flows/action-definitions";
 import type {
   RunFlowWorkflowParams,
   RunFlowWorkflowResponse,
@@ -14,19 +12,16 @@ import type {
   StepOutput,
 } from "@local/hash-isomorphic-utils/flows/types";
 import { validateFlowDefinition } from "@local/hash-isomorphic-utils/flows/util";
-import type { EntityUuid } from "@local/hash-subgraph";
 import type { Status } from "@local/status";
 import { StatusCode } from "@local/status";
 import {
   ActivityCancellationType,
+  ApplicationFailure,
   proxyActivities,
   workflowInfo,
 } from "@temporalio/workflow";
 
-import type {
-  createFlowActionActivities,
-  createFlowActivities,
-} from "../activities/flow-activities";
+import type { createFlowActivities } from "../activities/flow-activities";
 import { stringify } from "../activities/shared/stringify";
 import { getAllStepsInFlow } from "./run-flow-workflow/get-all-steps-in-flow";
 import { getStepDefinitionFromFlowDefinition } from "./run-flow-workflow/get-step-definition-from-flow";
@@ -73,9 +68,17 @@ const doesFlowStepHaveSatisfiedDependencies = (params: {
       );
 
       if (!inputDefinition) {
-        throw new Error(
-          `Definition for inputName '${inputSource.inputName}' in step ${step.stepId} not found in action definition ${step.actionDefinitionId}`,
-        );
+        const errorMessage = `Definition for inputName '${inputSource.inputName}' in step ${step.stepId} not found in action definition ${step.actionDefinitionId}`;
+
+        throw ApplicationFailure.create({
+          message: errorMessage,
+          details: [
+            {
+              code: StatusCode.FailedPrecondition,
+              message: errorMessage,
+            },
+          ],
+        });
       }
 
       if (
@@ -131,26 +134,27 @@ const doesFlowStepHaveSatisfiedDependencies = (params: {
   }
 };
 
-const flowActivities = proxyActivities<ReturnType<typeof createFlowActivities>>(
-  {
-    cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
-    startToCloseTimeout: "3600 second", // 1 hour
-    retry: { maximumAttempts: 1 },
-  },
-);
-
-const proxyActionActivity = (params: {
-  actionDefinitionId: ActionDefinitionId;
+const proxyFlowActivity = <
+  ActionId extends keyof ReturnType<typeof createFlowActivities>,
+>(params: {
+  actionId: ActionId;
   maximumAttempts: number;
   activityId: string;
-}) => {
-  const { actionDefinitionId, maximumAttempts, activityId } = params;
+}): ReturnType<typeof createFlowActivities>[ActionId] => {
+  const { actionId, maximumAttempts, activityId } = params;
 
-  const { [`${actionDefinitionId}Action` as const]: action } = proxyActivities<
-    ReturnType<typeof createFlowActionActivities>
+  const { [actionId]: action } = proxyActivities<
+    ReturnType<typeof createFlowActivities>
   >({
-    cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
-    startToCloseTimeout: "3600 second", // 1 hour
+    /** @todo H-2545 switch to WAIT_CANCELLATION_COMPLETED and handle cancellation cleanup in activities */
+    cancellationType: ActivityCancellationType.TRY_CANCEL,
+    /**
+     * @todo H-2575 – decide what to do about timeouts, in light of potentially having to wait for user input
+     *    – ideally we'd be able to wait on the workflow level, so that it's put to sleep until the response is
+     *   received, but this requires refactoring the research task such that all tool calls are activities.
+     * @see https://docs.temporal.io/dev-guide/typescript/features#asynchronous-design-patterns
+     */
+    startToCloseTimeout: "7200 second", // 2 hours
     retry: { maximumAttempts },
     activityId,
   });
@@ -166,23 +170,47 @@ export const runFlowWorkflow = async (
   try {
     validateFlowDefinition(flowDefinition);
   } catch (error) {
-    return {
-      code: StatusCode.InvalidArgument,
+    throw ApplicationFailure.create({
       message: (error as Error).message,
-      contents: [],
-    };
+      details: [
+        {
+          code: StatusCode.InvalidArgument,
+          message: (error as Error).message,
+          contents: [],
+        },
+      ],
+    });
   }
 
+  const userHasPermissionActivity = proxyFlowActivity({
+    actionId: "userHasPermissionToRunFlowInWebActivity",
+    maximumAttempts: 1,
+    activityId: "check-user-permission",
+  });
+
+  const persistFlowActivity = proxyFlowActivity({
+    actionId: "persistFlowActivity",
+    maximumAttempts: 1,
+    activityId: "persist-flow",
+  });
+
   // Ensure the user has permission to create entities in specified web
-  const userHasPermissionToRunFlowInWeb =
-    await flowActivities.userHasPermissionToRunFlowInWebActivity();
+  const userHasPermissionToRunFlowInWeb = await userHasPermissionActivity();
 
   if (userHasPermissionToRunFlowInWeb.status !== "ok") {
-    return {
-      code: StatusCode.PermissionDenied,
-      message: `User does not have permission to run flow in web ${webId}, because they are missing permissions: ${userHasPermissionToRunFlowInWeb.missingPermissions.join(`,`)}`,
-      contents: [],
-    };
+    const errorMessage = `User does not have permission to run flow in web ${webId}, because they are missing permissions: ${userHasPermissionToRunFlowInWeb.missingPermissions.join(
+      `,`,
+    )}`;
+    throw ApplicationFailure.create({
+      message: errorMessage,
+      details: [
+        {
+          code: StatusCode.PermissionDenied,
+          message: errorMessage,
+          contents: [],
+        },
+      ],
+    });
   }
 
   log(`Initializing ${flowDefinition.name} Flow`);
@@ -192,10 +220,26 @@ export const runFlowWorkflow = async (
   const flow = initializeFlow({
     flowDefinition,
     flowTrigger,
-    flowId: workflowId as EntityUuid,
+    flowRunId: workflowId as EntityUuid,
+    /** use the flow definition's name as a placeholder – we need the Flow persisted to link the generating name usage to it */
+    name: flowDefinition.name,
   });
 
-  await flowActivities.persistFlowActivity({ flow, userAuthentication });
+  await persistFlowActivity({ flow, userAuthentication, webId });
+
+  const generateFlowRunNameActivity = proxyFlowActivity({
+    actionId: "generateFlowRunName",
+    maximumAttempts: 1,
+    activityId: "generate-flow-run-name",
+  });
+
+  const generatedName = await generateFlowRunNameActivity({
+    flowDefinition,
+    flowTrigger,
+  });
+
+  flow.name = generatedName;
+  await persistFlowActivity({ flow, userAuthentication, webId });
 
   setQueryAndSignalHandlers();
 
@@ -225,9 +269,9 @@ export const runFlowWorkflow = async (
         flowDefinition,
       });
 
-      const actionActivity = proxyActionActivity({
-        actionDefinitionId: currentStep.actionDefinitionId,
-        maximumAttempts: actionStepDefinition.retryCount ?? 1,
+      const actionActivity = proxyFlowActivity({
+        actionId: `${currentStep.actionDefinitionId}Action`,
+        maximumAttempts: actionStepDefinition.retryCount ?? 3,
         activityId: currentStep.stepId,
       });
 
@@ -247,13 +291,17 @@ export const runFlowWorkflow = async (
         });
       } catch (error) {
         log(
-          `Step ${currentStepId}: encountered runtime error executing "${currentStep.actionDefinitionId}" action: ${stringify(error)}`,
+          `Step ${currentStepId}: encountered runtime error executing "${
+            currentStep.actionDefinitionId
+          }" action: ${stringify(error)}`,
         );
 
         actionResponse = {
           contents: [],
           code: StatusCode.Internal,
-          message: `Error executing action ${currentStep.actionDefinitionId}: ${stringify(error)}`,
+          message: `Error executing action ${
+            currentStep.actionDefinitionId
+          }: ${stringify(error)}`,
         };
 
         processStepErrors[currentStepId] = actionResponse;
@@ -374,12 +422,18 @@ export const runFlowWorkflow = async (
   );
 
   if (stepWithSatisfiedDependencies.length === 0) {
-    return {
-      code: StatusCode.FailedPrecondition,
-      message:
-        "No steps have satisfied dependencies when initializing the flow.",
-      contents: [{ flow }],
-    };
+    const errorMessage =
+      "No steps have satisfied dependencies when initializing the flow.";
+    throw ApplicationFailure.create({
+      message: errorMessage,
+      details: [
+        {
+          code: StatusCode.FailedPrecondition,
+          message: errorMessage,
+          contents: [{ flow }],
+        },
+      ],
+    });
   }
 
   // Recursively process steps which have satisfied dependencies
@@ -403,7 +457,7 @@ export const runFlowWorkflow = async (
 
     await Promise.all(stepsToProcess.map((step) => processStep(step.stepId)));
 
-    await flowActivities.persistFlowActivity({ flow, userAuthentication });
+    await persistFlowActivity({ flow, userAuthentication, webId });
 
     // Recursively call processSteps until all steps are processed
     await processSteps();
@@ -426,11 +480,17 @@ export const runFlowWorkflow = async (
 
   /** @todo this is not necessarily an error once there are branches */
   if (processedStepIds.length !== getAllStepsInFlow(flow).length) {
-    return {
-      code: StatusCode.Unknown,
-      message: "Not all steps in the flows were processed.",
-      contents: [{ flow, stepErrors }],
-    };
+    const errorMessage = "Not all steps in the flows were processed.";
+    throw ApplicationFailure.create({
+      message: errorMessage,
+      details: [
+        {
+          code: StatusCode.Unknown,
+          message: errorMessage,
+          contents: [{ flow, stepErrors }],
+        },
+      ],
+    });
   }
 
   for (const outputDefinition of flowDefinition.outputs) {
@@ -445,11 +505,17 @@ export const runFlowWorkflow = async (
         continue;
       }
 
-      return {
-        code: StatusCode.NotFound,
-        message: `${errorPrefix}required step with id '${outputDefinition.stepId}' not found in outputs.`,
-        contents: [{ flow, stepErrors }],
-      };
+      const errorMessage = `${errorPrefix}required step with id '${outputDefinition.stepId}' not found in outputs.`;
+      throw ApplicationFailure.create({
+        message: errorMessage,
+        details: [
+          {
+            code: StatusCode.NotFound,
+            message: errorMessage,
+            contents: [{ flow, stepErrors }],
+          },
+        ],
+      });
     }
 
     if (step.kind === "action") {
@@ -462,11 +528,18 @@ export const runFlowWorkflow = async (
           continue;
         }
 
-        return {
-          code: StatusCode.NotFound,
-          message: `${errorPrefix}there is no output with name '${outputDefinition.stepOutputName}' in step ${step.stepId}`,
-          contents: [{ stepErrors }],
-        };
+        const errorMessage = `${errorPrefix}there is no output with name '${outputDefinition.stepOutputName}' in step ${step.stepId}`;
+
+        throw ApplicationFailure.create({
+          message: errorMessage,
+          details: [
+            {
+              code: StatusCode.NotFound,
+              message: errorMessage,
+              contents: [{ stepErrors }],
+            },
+          ],
+        });
       }
 
       flow.outputs = [
@@ -480,11 +553,17 @@ export const runFlowWorkflow = async (
       const output = step.aggregateOutput;
 
       if (!output) {
-        return {
-          code: StatusCode.NotFound,
-          message: `${errorPrefix}no aggregate output found in step ${step.stepId}`,
-          contents: [{ stepErrors }],
-        };
+        const errorMessage = `${errorPrefix}no aggregate output found in step ${step.stepId}`;
+        throw ApplicationFailure.create({
+          message: errorMessage,
+          details: [
+            {
+              code: StatusCode.NotFound,
+              message: errorMessage,
+              contents: [{ stepErrors }],
+            },
+          ],
+        });
       }
 
       flow.outputs = [
@@ -497,7 +576,7 @@ export const runFlowWorkflow = async (
     }
   }
 
-  await flowActivities.persistFlowActivity({ flow, userAuthentication });
+  await persistFlowActivity({ flow, userAuthentication, webId });
 
   const outputs = flow.outputs ?? [];
 

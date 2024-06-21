@@ -7,14 +7,21 @@ import type {
   ArchiveEntityTypeParams,
   EntityType,
   EntityTypePermission,
-  GetEntityTypesRequest,
-  GetEntityTypeSubgraphRequest,
+  GetEntityTypesParams,
+  GetEntityTypeSubgraphParams,
   ModifyRelationshipOperation,
   OntologyTemporalMetadata,
   ProvidedOntologyEditionProvenance,
   UnarchiveEntityTypeParams,
   UpdateEntityTypeRequest,
 } from "@local/hash-graph-client";
+import type {
+  BaseUrl,
+  EntityTypeMetadata,
+  EntityTypeWithMetadata,
+  OntologyTypeRecordId,
+} from "@local/hash-graph-types/ontology";
+import type { OwnedById } from "@local/hash-graph-types/web";
 import { currentTimeInstantTemporalAxes } from "@local/hash-isomorphic-utils/graph-queries";
 import { generateTypeId } from "@local/hash-isomorphic-utils/ontology-types";
 import {
@@ -26,14 +33,9 @@ import type {
   UserPermissionsOnEntityType,
 } from "@local/hash-isomorphic-utils/types";
 import type {
-  BaseUrl,
   EntityTypeAuthorizationRelationship,
-  EntityTypeMetadata,
   EntityTypeRelationAndSubject,
   EntityTypeRootType,
-  EntityTypeWithMetadata,
-  OntologyTypeRecordId,
-  OwnedById,
   Subgraph,
 } from "@local/hash-subgraph";
 import {
@@ -183,7 +185,7 @@ export const createEntityType: ImpureGraphFunction<
  * @param params.query the structural query to filter entity types by.
  */
 export const getEntityTypeSubgraph: ImpureGraphFunction<
-  Omit<GetEntityTypeSubgraphRequest, "includeDrafts"> & {
+  Omit<GetEntityTypeSubgraphParams, "includeDrafts"> & {
     temporalClient?: TemporalClient;
   },
   Promise<Subgraph<EntityTypeRootType>>
@@ -203,7 +205,7 @@ export const getEntityTypeSubgraph: ImpureGraphFunction<
 };
 
 export const getEntityTypes: ImpureGraphFunction<
-  Omit<GetEntityTypesRequest, "includeDrafts"> & {
+  Omit<GetEntityTypesParams, "includeDrafts"> & {
     temporalClient?: TemporalClient;
   },
   Promise<EntityTypeWithMetadata[]>
@@ -252,14 +254,14 @@ export const getEntityTypeById: ImpureGraphFunction<
  * If the type does not already exist within the Graph, and is an externally-hosted type, this will also load the type into the Graph.
  */
 export const getEntityTypeSubgraphById: ImpureGraphFunction<
-  Omit<GetEntityTypeSubgraphRequest, "filter" | "includeDrafts"> & {
+  Omit<GetEntityTypeSubgraphParams, "filter" | "includeDrafts"> & {
     entityTypeId: VersionedUrl;
   },
   Promise<Subgraph<EntityTypeRootType>>
 > = async (context, authentication, params) => {
   const { graphResolveDepths, temporalAxes, entityTypeId } = params;
 
-  const request: GetEntityTypeSubgraphRequest = {
+  const request: GetEntityTypeSubgraphParams = {
     filter: {
       equal: [{ path: ["versionedUrl"] }, { parameter: entityTypeId }],
     },

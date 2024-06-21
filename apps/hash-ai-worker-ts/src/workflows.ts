@@ -1,29 +1,22 @@
 import type { EntityQueryCursor, Filter } from "@local/hash-graph-client";
 import type { Entity as GraphApiEntity } from "@local/hash-graph-client/api";
+import type { SerializedEntity } from "@local/hash-graph-sdk/entity";
+import { Entity } from "@local/hash-graph-sdk/entity";
+import type { AccountId } from "@local/hash-graph-types/account";
+import type {
+  DataTypeWithMetadata,
+  EntityTypeWithMetadata,
+  PropertyTypeWithMetadata,
+} from "@local/hash-graph-types/ontology";
 import type {
   CreateEmbeddingsParams,
   CreateEmbeddingsReturn,
-  InferEntitiesCallerParams,
-  InferEntitiesReturn,
 } from "@local/hash-isomorphic-utils/ai-inference-types";
-import { getResultsFromCancelledInferenceQuery } from "@local/hash-isomorphic-utils/flows/queries";
 import { systemEntityTypes } from "@local/hash-isomorphic-utils/ontology-type-ids";
 import type { ParseTextFromFileParams } from "@local/hash-isomorphic-utils/parse-text-from-file-types";
-import type {
-  AccountId,
-  DataTypeWithMetadata,
-  Entity,
-  EntityMetadata,
-  EntityTypeWithMetadata,
-  PropertyTypeWithMetadata,
-} from "@local/hash-subgraph";
-import { CancelledFailure } from "@temporalio/common";
 import {
   ActivityCancellationType,
-  ActivityFailure,
-  isCancellation,
   proxyActivities,
-  setHandler,
 } from "@temporalio/workflow";
 import type { CreateEmbeddingResponse } from "openai/resources";
 
@@ -46,37 +39,6 @@ const graphActivities = proxyActivities<
     maximumAttempts: 3,
   },
 });
-
-export const inferEntities = async (params: InferEntitiesCallerParams) => {
-  try {
-    return await aiActivities.inferEntitiesActivity(params);
-  } catch (err) {
-    if (isCancellation(err) && ActivityFailure.is(err)) {
-      if (
-        "cause" in (err as Error) &&
-        CancelledFailure.is(err.cause) &&
-        typeof err.cause.details[0] === "object" &&
-        err.cause.details[0] !== null &&
-        "code" in err.cause.details[0]
-      ) {
-        const results = err.cause.details[0] as InferEntitiesReturn;
-
-        /**
-         * For some reason the `details` are not returned to the client as part of the 'CancelledFailure' error,
-         * so we set up a query handler instead which the client can call for partial results when it receives a
-         * cancellation.
-         *
-         * @todo figure out why 'details' is not being returned in the error - @see
-         *   https://temporalio.slack.com/archives/C01DKSMU94L/p1705927971571849
-         */
-        setHandler(getResultsFromCancelledInferenceQuery, () => results);
-
-        throw err;
-      }
-    }
-    throw err;
-  }
-};
 
 export const createEmbeddings = async (
   params: CreateEmbeddingsParams,
@@ -369,7 +331,7 @@ export const updateEntityEmbeddings = async (
     },
   } as const;
 
-  let entities: Entity[];
+  let entities: SerializedEntity[];
   let cursor: EntityQueryCursor | undefined | null = undefined;
 
   const usage: CreateEmbeddingResponse.Usage = {
@@ -380,24 +342,7 @@ export const updateEntityEmbeddings = async (
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   while (true) {
     if ("entities" in params) {
-      entities = params.entities.map((entity) => {
-        // We should use `mapGraphApiEntityToEntity` but due to Temporal this function is not available in workflows
-        if (entity.metadata.entityTypeIds.length !== 1) {
-          throw new Error(
-            `Expected entity metadata to have exactly one entity type id, but got ${entity.metadata.entityTypeIds.length}`,
-          );
-        }
-        return {
-          ...entity,
-          metadata: {
-            recordId: entity.metadata.recordId,
-            entityTypeId: entity.metadata.entityTypeIds[0],
-            temporalVersioning: entity.metadata.temporalVersioning,
-            provenance: entity.metadata.provenance,
-            archived: entity.metadata.archived,
-          } as EntityMetadata,
-        } as Entity;
-      });
+      entities = params.entities.map((entity) => new Entity(entity).toJSON());
     } else {
       const queryResponse = await graphActivities.getEntitySubgraph({
         authentication: params.authentication,
@@ -429,16 +374,17 @@ export const updateEntityEmbeddings = async (
       break;
     }
 
-    for (const entity of entities) {
+    for (const serializedEntity of entities) {
+      const entity = new Entity(serializedEntity);
       /**
-       * Don't try to create embeddings for `Flow` entities, due to the size
+       * Don't try to create embeddings for `FlowRun` entities, due to the size
        * of their property values.
        *
        * @todo: consider having a general approach for declaring which entity/property
        * types should be skipped when generating embeddings.
        */
       if (
-        systemEntityTypes.flow.entityTypeId === entity.metadata.entityTypeId
+        systemEntityTypes.flowRun.entityTypeId === entity.metadata.entityTypeId
       ) {
         continue;
       }

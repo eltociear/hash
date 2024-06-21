@@ -1,88 +1,51 @@
-import { mapFlowToEntityProperties } from "@local/hash-isomorphic-utils/flows/mappings";
-import type { Flow } from "@local/hash-isomorphic-utils/flows/types";
-import {
-  createDefaultAuthorizationRelationships,
-  currentTimeInstantTemporalAxes,
-  generateVersionedUrlMatchingFilter,
-} from "@local/hash-isomorphic-utils/graph-queries";
+import { getFlowRunEntityById } from "@local/hash-backend-utils/flows";
+import { Entity } from "@local/hash-graph-sdk/entity";
+import type { AccountId } from "@local/hash-graph-types/account";
+import type { OwnedById } from "@local/hash-graph-types/web";
+import { mapFlowRunToEntityProperties } from "@local/hash-isomorphic-utils/flows/mappings";
+import type { LocalFlowRun } from "@local/hash-isomorphic-utils/flows/types";
+import { createDefaultAuthorizationRelationships } from "@local/hash-isomorphic-utils/graph-queries";
 import { systemEntityTypes } from "@local/hash-isomorphic-utils/ontology-type-ids";
-import { mapGraphApiEntityToEntity } from "@local/hash-isomorphic-utils/subgraph-mapping";
-import type { FlowProperties } from "@local/hash-isomorphic-utils/system-types/flow";
-import type { AccountId, Entity, EntityUuid } from "@local/hash-subgraph";
 
 import { graphApiClient } from "../shared/graph-api-client";
 
 type PersistFlowActivityParams = {
-  flow: Flow;
+  flow: LocalFlowRun;
   userAuthentication: { actorId: AccountId };
-};
-
-const getExistingFlowEntity = async (params: {
-  flowId: EntityUuid;
-  userAuthentication: { actorId: AccountId };
-}): Promise<Entity<FlowProperties> | null> => {
-  const { flowId, userAuthentication } = params;
-
-  const [existingFlowEntity] = await graphApiClient
-    .getEntities(userAuthentication.actorId, {
-      filter: {
-        all: [
-          {
-            equal: [{ path: ["uuid"] }, { parameter: flowId }],
-          },
-          generateVersionedUrlMatchingFilter(
-            systemEntityTypes.flow.entityTypeId,
-            { ignoreParents: true },
-          ),
-        ],
-      },
-      temporalAxes: currentTimeInstantTemporalAxes,
-      includeDrafts: false,
-    })
-    .then(({ data: response }) =>
-      response.entities.map(
-        (entity) =>
-          mapGraphApiEntityToEntity(
-            entity,
-            userAuthentication.actorId,
-          ) as Entity<FlowProperties>,
-      ),
-    );
-
-  return existingFlowEntity ?? null;
+  webId: OwnedById;
 };
 
 export const persistFlowActivity = async (
   params: PersistFlowActivityParams,
 ) => {
-  const { flow, userAuthentication } = params;
+  const { flow, userAuthentication, webId } = params;
 
-  const { flowId } = flow;
+  const { flowRunId } = flow;
 
-  const flowProperties = mapFlowToEntityProperties(flow);
+  const flowRunProperties = mapFlowRunToEntityProperties(flow);
 
-  const existingFlowEntity = await getExistingFlowEntity({
-    flowId,
+  const existingFlowEntity = await getFlowRunEntityById({
+    flowRunId,
+    graphApiClient,
     userAuthentication,
   });
 
   if (existingFlowEntity) {
-    await graphApiClient.patchEntity(userAuthentication.actorId, {
-      entityId: existingFlowEntity.metadata.recordId.entityId,
+    await existingFlowEntity.patch(graphApiClient, userAuthentication, {
       properties: [
         {
           op: "replace",
           path: [],
-          value: flowProperties,
+          value: flowRunProperties,
         },
       ],
     });
   } else {
-    await graphApiClient.createEntity(userAuthentication.actorId, {
-      ownedById: userAuthentication.actorId,
-      entityUuid: flowId,
-      entityTypeIds: [systemEntityTypes.flow.entityTypeId],
-      properties: flowProperties,
+    await Entity.create(graphApiClient, userAuthentication, {
+      ownedById: webId,
+      entityUuid: flowRunId,
+      entityTypeId: systemEntityTypes.flowRun.entityTypeId,
+      properties: flowRunProperties,
       draft: false,
       relationships:
         createDefaultAuthorizationRelationships(userAuthentication),

@@ -1,58 +1,239 @@
 import type { VersionedUrl } from "@blockprotocol/type-system";
-import type {
-  InputNameForAction,
-  OutputNameForAction,
-} from "@local/hash-isomorphic-utils/flows/action-definitions";
-import { actionDefinitions } from "@local/hash-isomorphic-utils/flows/action-definitions";
-import type {
-  ProposedEntity,
-  StepInput,
-} from "@local/hash-isomorphic-utils/flows/types";
+import type { OriginProvenance } from "@local/hash-graph-client";
+import { flattenPropertyMetadata } from "@local/hash-graph-sdk/entity";
+import type { EntityId } from "@local/hash-graph-types/entity";
+import type { OutputNameForAction } from "@local/hash-isomorphic-utils/flows/action-definitions";
+import type { ProposedEntity } from "@local/hash-isomorphic-utils/flows/types";
 import { generateUuid } from "@local/hash-isomorphic-utils/generate-uuid";
 import type { FileProperties } from "@local/hash-isomorphic-utils/system-types/shared";
 import { StatusCode } from "@local/status";
-import { Context } from "@temporalio/activity";
 import dedent from "dedent";
 
 import { logger } from "../shared/activity-logger";
+import { getFlowContext } from "../shared/get-flow-context";
 import type { ParsedLlmToolCall } from "../shared/get-llm-response/types";
 import { logProgress } from "../shared/log-progress";
 import { stringify } from "../shared/stringify";
-import { getWebPageSummaryAction } from "./get-web-page-summary-action";
+import { checkSubTasksAgent } from "./research-entities-action/check-sub-tasks-agent";
+import type {
+  CoordinatingAgentInput,
+  CoordinatingAgentState,
+} from "./research-entities-action/coordinating-agent";
+import { coordinatingAgent } from "./research-entities-action/coordinating-agent";
 import type {
   CoordinatorToolCallArguments,
   CoordinatorToolName,
 } from "./research-entities-action/coordinator-tools";
-import { inferEntitiesFromWebPageWorkerAgent } from "./research-entities-action/infer-entities-from-web-page-worker-agent";
-import type { CoordinatingAgentState } from "./research-entities-action/open-ai-coordinating-agent";
-import { coordinatingAgent } from "./research-entities-action/open-ai-coordinating-agent";
+import type { DuplicateReport } from "./research-entities-action/deduplicate-entities";
+import { deduplicateEntities } from "./research-entities-action/deduplicate-entities";
+import { getAnswersFromHuman } from "./research-entities-action/get-answers-from-human";
+import { handleWebSearchToolCall } from "./research-entities-action/handle-web-search-tool-call";
+import { inferFactsFromWebPageWorkerAgent } from "./research-entities-action/infer-facts-from-web-page-worker-agent";
+import type { AccessedRemoteFile } from "./research-entities-action/infer-facts-from-web-page-worker-agent/types";
+import { runSubTaskAgent } from "./research-entities-action/sub-task-agent";
 import type { CompletedToolCall } from "./research-entities-action/types";
+import type { LocalEntitySummary } from "./shared/infer-facts-from-text/get-entity-summaries-from-text";
+import type { Fact } from "./shared/infer-facts-from-text/types";
+import { proposeEntitiesFromFacts } from "./shared/propose-entities-from-facts";
 import type { FlowActionActivity } from "./types";
-import { webSearchAction } from "./web-search-action";
 
-export const researchEntitiesAction: FlowActionActivity = async ({
-  inputs: stepInputs,
+const adjustDuplicates = (params: {
+  duplicates: DuplicateReport[];
+  entityIdsWhichCannotBeDeduplicated: EntityId[];
 }) => {
+  const { duplicates, entityIdsWhichCannotBeDeduplicated } = params;
+
+  const adjustedDuplicates = duplicates.map<DuplicateReport>(
+    ({ canonicalId, duplicateIds }) => {
+      if (
+        entityIdsWhichCannotBeDeduplicated.includes(canonicalId as EntityId)
+      ) {
+        return { canonicalId, duplicateIds };
+      }
+
+      const existingEntityIdMarkedAsDuplicate = duplicateIds.find((id) =>
+        entityIdsWhichCannotBeDeduplicated.includes(id as EntityId),
+      );
+
+      /**
+       * @todo: this doesn't account for when there are duplicates
+       * detected in the existing entities.
+       */
+      if (existingEntityIdMarkedAsDuplicate) {
+        return {
+          canonicalId: existingEntityIdMarkedAsDuplicate,
+          duplicateIds: [
+            ...duplicateIds.filter(
+              (id) => id !== existingEntityIdMarkedAsDuplicate,
+            ),
+            canonicalId,
+          ],
+        };
+      }
+
+      return { canonicalId, duplicateIds };
+    },
+  );
+
+  return adjustedDuplicates;
+};
+
+const updateStateFromInferredFacts = async (params: {
+  input: CoordinatingAgentInput;
+  state: CoordinatingAgentState;
+  inferredFacts: Fact[];
+  inferredFactsAboutEntities: LocalEntitySummary[];
+  filesUsedToInferFacts: AccessedRemoteFile[];
+}) => {
+  const {
+    input,
+    state,
+    inferredFactsAboutEntities,
+    inferredFacts,
+    filesUsedToInferFacts,
+  } = params;
+
+  if (
+    (input.existingEntities ?? []).length === 0 &&
+    state.inferredFactsAboutEntities.length === 0
+  ) {
+    /**
+     * If there are no existing inferred facts about entities, there
+     * is no need to deduplicate entities.
+     */
+    state.inferredFactsAboutEntities = inferredFactsAboutEntities;
+    state.inferredFacts = inferredFacts;
+  } else {
+    const { duplicates } = await deduplicateEntities({
+      entities: [
+        ...(input.existingEntitySummaries ?? []),
+        ...inferredFactsAboutEntities,
+        ...state.inferredFactsAboutEntities,
+      ],
+    });
+
+    /**
+     * There are some entities that shouldn't be marked as the duplicates, and
+     * should instead always be the canonical entity.
+     */
+    const entityIdsWhichCannotBeDeduplicated = [
+      /**
+       * We don't want to deduplicate any entities that are already persisted in
+       * the graph (i.e. the `existingEntities` passed in as input to the action)
+       */
+      ...(input.existingEntitySummaries ?? []).map(({ entityId }) => entityId),
+    ];
+
+    const adjustedDuplicates = adjustDuplicates({
+      duplicates,
+      entityIdsWhichCannotBeDeduplicated,
+    });
+
+    const inferredFactsWithDeduplicatedEntities = inferredFacts.map((fact) => {
+      const { subjectEntityLocalId, objectEntityLocalId } = fact;
+      const subjectDuplicate = adjustedDuplicates.find(({ duplicateIds }) =>
+        duplicateIds.includes(subjectEntityLocalId),
+      );
+
+      const objectDuplicate = objectEntityLocalId
+        ? duplicates.find(({ duplicateIds }) =>
+            duplicateIds.includes(objectEntityLocalId),
+          )
+        : undefined;
+
+      return {
+        ...fact,
+        subjectEntityLocalId:
+          subjectDuplicate?.canonicalId ?? fact.subjectEntityLocalId,
+        objectEntityLocalId:
+          objectDuplicate?.canonicalId ?? objectEntityLocalId,
+      };
+    });
+
+    state.inferredFacts.push(...inferredFactsWithDeduplicatedEntities);
+    state.inferredFactsAboutEntities = [
+      ...state.inferredFactsAboutEntities,
+      ...inferredFactsAboutEntities,
+    ].filter(
+      ({ localId }) =>
+        !duplicates.some(({ duplicateIds }) => duplicateIds.includes(localId)),
+    );
+    /**
+     * Account for any previously proposed entities with a local ID which has
+     * been marked as a duplicate.
+     */
+    state.proposedEntities = state.proposedEntities.map((proposedEntity) => {
+      const duplicate = duplicates.find(({ duplicateIds }) =>
+        duplicateIds.includes(proposedEntity.localEntityId),
+      );
+
+      return duplicate
+        ? {
+            ...proposedEntity,
+            localEntityId: duplicate.canonicalId,
+          }
+        : proposedEntity;
+    });
+    /**
+     * Account for any previously submitted entity ID which has been marked
+     * as a duplicate.
+     */
+    state.submittedEntityIds = state.submittedEntityIds.map((entityId) => {
+      const duplicate = duplicates.find(({ duplicateIds }) =>
+        duplicateIds.includes(entityId),
+      );
+
+      return duplicate ? duplicate.canonicalId : entityId;
+    });
+  }
+
+  state.filesUsedToInferFacts.push(...filesUsedToInferFacts);
+};
+
+export const researchEntitiesAction: FlowActionActivity<{
+  testingParams?: {
+    humanInputCanBeRequested?: boolean;
+    persistState?: (state: CoordinatingAgentState) => void;
+    resumeFromState?: CoordinatingAgentState;
+  };
+}> = async ({ inputs: stepInputs, testingParams }) => {
   const input = await coordinatingAgent.parseCoordinatorInputs({
     stepInputs,
+    testingParams,
   });
 
-  /**
-   * We start by asking the coordinator agent to create an initial plan
-   * for the research task.
-   */
-  const { plan: initialPlan } = await coordinatingAgent.createInitialPlan({
-    input,
-  });
+  let state: CoordinatingAgentState;
 
-  const state: CoordinatingAgentState = {
-    plan: initialPlan,
-    proposedEntities: [],
-    submittedEntityIds: [],
-    previousCalls: [],
-    hasConductedCheckStep: false,
-    filesUsedToProposeEntities: [],
-  };
+  if (testingParams?.resumeFromState) {
+    state = testingParams.resumeFromState;
+  } else {
+    /**
+     * We start by asking the coordinator agent to create an initial plan
+     * for the research task.
+     */
+    const { plan: initialPlan, questionsAndAnswers } =
+      await coordinatingAgent.createInitialPlan({
+        input,
+        questionsAndAnswers: null,
+      });
+
+    state = {
+      plan: initialPlan,
+      proposedEntities: [],
+      submittedEntityIds: [],
+      previousCalls: [],
+      inferredFactsAboutEntities: [],
+      filesUsedToInferFacts: [],
+      inferredFacts: [],
+      hasConductedCheckStep: false,
+      filesUsedToProposeEntities: [],
+      questionsAndAnswers,
+    };
+
+    if (testingParams?.persistState) {
+      testingParams.persistState(state);
+    }
+  }
 
   const { toolCalls: initialToolCalls } =
     await coordinatingAgent.getNextToolCalls({
@@ -64,6 +245,8 @@ export const researchEntitiesAction: FlowActionActivity = async ({
     state.proposedEntities.filter(({ localEntityId }) =>
       state.submittedEntityIds.includes(localEntityId),
     );
+
+  const { flowEntityId, stepId } = await getFlowContext();
 
   const processToolCalls = async (params: {
     toolCalls: ParsedLlmToolCall<CoordinatorToolName>[];
@@ -95,105 +278,110 @@ export const researchEntitiesAction: FlowActionActivity = async ({
               ...toolCall,
               output: `The plan has been successfully updated.`,
             };
+          } else if (toolCall.name === "requestHumanInput") {
+            const { questions } =
+              toolCall.input as CoordinatorToolCallArguments["requestHumanInput"];
+
+            if (questions.length === 0) {
+              return {
+                ...toolCall,
+                output: "No questions were provided.",
+                isError: true,
+              };
+            }
+
+            logger.debug(
+              `Requesting human input for questions: ${stringify(questions)}`,
+            );
+
+            const response = await getAnswersFromHuman(
+              (
+                toolCall.input as CoordinatorToolCallArguments["requestHumanInput"]
+              ).questions,
+            );
+
+            state.questionsAndAnswers =
+              (state.questionsAndAnswers ?? "") + response;
+
+            return {
+              ...toolCall,
+              output: response,
+            };
           } else if (toolCall.name === "submitProposedEntities") {
             const { entityIds } =
               toolCall.input as CoordinatorToolCallArguments["submitProposedEntities"];
+
+            const invalidEntityIds = entityIds.filter(
+              (entityId) =>
+                !state.proposedEntities.some(
+                  ({ localEntityId }) => localEntityId === entityId,
+                ),
+            );
+
+            if (invalidEntityIds.length > 0) {
+              return {
+                ...toolCall,
+                output: dedent(`
+                  The following entity IDs do not correspond to any proposed entities: ${JSON.stringify(
+                    invalidEntityIds,
+                  )}
+
+                  ${
+                    state.proposedEntities.length > 0
+                      ? `Valid entity IDs are: ${JSON.stringify(
+                          state.proposedEntities.map(
+                            ({ localEntityId }) => localEntityId,
+                          ),
+                        )}`
+                      : `You haven't proposed any entities so far with the "proposeEntitiesFromFacts" tool.`
+                  }
+                `),
+                isError: true,
+              };
+            }
 
             state.submittedEntityIds.push(...entityIds);
 
             return {
               ...toolCall,
-              output: `The entities with IDs ${JSON.stringify(entityIds)} where successfully submitted.`,
-            };
-          } else if (toolCall.name === "getWebPageSummary") {
-            const { url } =
-              toolCall.input as CoordinatorToolCallArguments["getWebPageSummary"];
-
-            const response = await getWebPageSummaryAction({
-              inputs: [
-                {
-                  inputName:
-                    "url" satisfies InputNameForAction<"getWebPageSummary">,
-                  payload: { kind: "Text", value: url },
-                },
-                ...actionDefinitions.getWebPageSummary.inputs.flatMap<StepInput>(
-                  ({ name, default: defaultValue }) =>
-                    !defaultValue || name === "url"
-                      ? []
-                      : [{ inputName: name, payload: defaultValue }],
-                ),
-              ],
-            });
-
-            if (response.code !== StatusCode.Ok) {
-              return {
-                ...toolCall,
-                output: `An unexpected error occurred trying to summarize the web page at url ${url}, try a different web page.`,
-                isError: true,
-              };
-            }
-
-            const { outputs } = response.contents[0]!;
-
-            return {
-              ...toolCall,
-              output: JSON.stringify(outputs),
+              output: `The entities with IDs ${JSON.stringify(
+                entityIds,
+              )} were successfully submitted.`,
             };
           } else if (toolCall.name === "webSearch") {
-            const { query } =
-              toolCall.input as CoordinatorToolCallArguments["webSearch"];
-
-            const response = await webSearchAction({
-              inputs: [
-                {
-                  inputName: "query" satisfies InputNameForAction<"webSearch">,
-                  payload: { kind: "Text", value: query },
-                },
-                {
-                  inputName:
-                    "numberOfSearchResults" satisfies InputNameForAction<"webSearch">,
-                  payload: { kind: "Number", value: 3 },
-                },
-              ],
+            const { output } = await handleWebSearchToolCall({
+              input:
+                toolCall.input as CoordinatorToolCallArguments["webSearch"],
             });
-
-            if (response.code !== StatusCode.Ok) {
-              throw new Error(
-                `Failed to perform web search: ${JSON.stringify(response)}`,
-              );
-            }
-
-            const { outputs } = response.contents[0]!;
 
             return {
               ...toolCall,
-              output: JSON.stringify(outputs),
+              output,
             };
-          } else if (toolCall.name === "inferEntitiesFromWebPage") {
-            const {
-              url,
-              prompt: inferencePrompt,
-              entityTypeIds,
-              linkEntityTypeIds,
-            } = toolCall.input as CoordinatorToolCallArguments["inferEntitiesFromWebPage"];
+          } else if (toolCall.name === "inferFactsFromWebPages") {
+            const { webPages } =
+              toolCall.input as CoordinatorToolCallArguments["inferFactsFromWebPages"];
 
             const validEntityTypeIds = input.entityTypes.map(({ $id }) => $id);
 
-            const invalidEntityTypeIds = entityTypeIds.filter(
-              (entityTypeId) =>
-                !validEntityTypeIds.includes(entityTypeId as VersionedUrl),
-            );
+            const invalidEntityTypeIds = webPages
+              .flatMap(({ entityTypeIds }) => entityTypeIds)
+              .filter(
+                (entityTypeId) =>
+                  !validEntityTypeIds.includes(entityTypeId as VersionedUrl),
+              );
 
             const validLinkEntityTypeIds =
               input.linkEntityTypes?.map(({ $id }) => $id) ?? [];
 
-            const invalidLinkEntityTypeIds =
-              linkEntityTypeIds?.filter(
+            const invalidLinkEntityTypeIds = webPages
+              .flatMap(({ linkEntityTypeIds }) => linkEntityTypeIds ?? [])
+              .filter(
                 (entityTypeId) =>
                   !validLinkEntityTypeIds.includes(
                     entityTypeId as VersionedUrl,
                   ),
-              ) ?? [];
+              );
 
             if (
               invalidEntityTypeIds.length > 0 ||
@@ -208,8 +396,10 @@ export const researchEntitiesAction: FlowActionActivity = async ({
                         The following entity type IDs are invalid: ${JSON.stringify(
                           invalidEntityTypeIds,
                         )}
-                        
-                        Valid entity type IDs are: ${JSON.stringify(validEntityTypeIds)}
+
+                        Valid entity type IDs are: ${JSON.stringify(
+                          validEntityTypeIds,
+                        )}
                       `)
                       : ""
                   }
@@ -220,162 +410,257 @@ export const researchEntitiesAction: FlowActionActivity = async ({
                           invalidLinkEntityTypeIds,
                         )}
                         
-                        The valid link entity types type IDs are: ${JSON.stringify(linkEntityTypeIds)}
+                        The valid link entity types type IDs are: ${JSON.stringify(
+                          validLinkEntityTypeIds,
+                        )}
                       `)
                       : ""
                   }
-                 
+
                 `),
                 isError: true,
               };
             }
 
-            const status = await inferEntitiesFromWebPageWorkerAgent({
-              prompt: inferencePrompt,
-              entityTypes: input.entityTypes.filter(({ $id }) =>
-                entityTypeIds.includes($id),
-              ),
-              linkEntityTypes: input.linkEntityTypes?.filter(
-                ({ $id }) => linkEntityTypeIds?.includes($id) ?? false,
-              ),
-              url,
-            });
+            const statusesWithUrl = await Promise.all(
+              webPages.map(
+                async ({ url, prompt, entityTypeIds, linkEntityTypeIds }) => {
+                  const status = await inferFactsFromWebPageWorkerAgent({
+                    prompt,
+                    entityTypes: input.entityTypes.filter(({ $id }) =>
+                      entityTypeIds.includes($id),
+                    ),
+                    linkEntityTypes: input.linkEntityTypes?.filter(
+                      ({ $id }) => linkEntityTypeIds?.includes($id) ?? false,
+                    ),
+                    url,
+                  });
 
-            if (status.code !== StatusCode.Ok) {
+                  return { status, url };
+                },
+              ),
+            );
+
+            let outputMessage = "";
+
+            const inferredFacts: Fact[] = [];
+            const inferredFactsAboutEntities: LocalEntitySummary[] = [];
+            const filesUsedToInferFacts: AccessedRemoteFile[] = [];
+
+            for (const { status, url } of statusesWithUrl) {
+              if (status.code !== StatusCode.Ok) {
+                outputMessage += `An error occurred when inferring facts from the web page with url ${url}: ${status.message}\n`;
+
+                continue;
+              }
+
+              const content = status.contents[0]!;
+
+              inferredFacts.push(...content.inferredFacts);
+              inferredFactsAboutEntities.push(
+                ...content.inferredFactsAboutEntities,
+              );
+              filesUsedToInferFacts.push(...content.filesUsedToInferFacts);
+
+              outputMessage += `Inferred ${
+                content.inferredFacts.length
+              } facts on the web page with url ${url} for the following entities: ${stringify(
+                content.inferredFactsAboutEntities.map(({ name, summary }) => ({
+                  name,
+                  summary,
+                })),
+              )}. ${content.suggestionForNextSteps}\n`;
+            }
+
+            outputMessage += dedent(`
+              If further research is needed to fill more properties of the entities,
+                consider defining them as sub-tasks via the "startFactGatheringSubTasks" tool.
+
+              Do not sequentially conduct additional web searches for each of the entities,
+                instead start multiple sub-tasks via the "startFactGatheringSubTasks" tool to
+                conduct additional research per entity in parallel.
+            `);
+
+            if (inferredFactsAboutEntities.length > 0) {
+              await updateStateFromInferredFacts({
+                input,
+                state,
+                inferredFacts,
+                inferredFactsAboutEntities,
+                filesUsedToInferFacts,
+              });
+
               return {
                 ...toolCall,
-                output: dedent(`
-                  An error occurred when inferring entities from the web
-                    page with url ${url}: ${status.message}
-                  
-                  Try another website.
-                `),
-                isError: true,
+                output: outputMessage,
               };
             }
-
-            const { inferredEntities, filesUsedToProposeEntities } =
-              status.contents[0]!;
-
-            state.proposedEntities.push(...inferredEntities);
-            state.filesUsedToProposeEntities.push(
-              ...filesUsedToProposeEntities,
-            );
 
             return {
               ...toolCall,
-              output: JSON.stringify(inferredEntities),
+              output: "No facts were inferred about any relevant entities.",
             };
-          } else if (toolCall.name === "proposeAndSubmitLink") {
-            const { sourceEntityId, targetEntityId, linkEntityTypeId } =
-              toolCall.input as CoordinatorToolCallArguments["proposeAndSubmitLink"];
+          } else if (toolCall.name === "proposeEntitiesFromFacts") {
+            const { entityIds } =
+              toolCall.input as CoordinatorToolCallArguments["proposeEntitiesFromFacts"];
 
-            const sourceEntity =
-              input.existingEntities?.find(
-                ({ metadata }) => metadata.recordId.entityId === sourceEntityId,
-              ) ??
-              state.proposedEntities.find(
-                ({ localEntityId }) => localEntityId === sourceEntityId,
-              );
+            const entitySummaries = state.inferredFactsAboutEntities.filter(
+              ({ localId }) => entityIds.includes(localId),
+            );
 
-            const targetEntity =
-              input.existingEntities?.find(
-                ({ metadata }) => metadata.recordId.entityId === targetEntityId,
-              ) ??
-              state.proposedEntities.find(
-                ({ localEntityId }) => localEntityId === targetEntityId,
-              );
+            const relevantFacts = state.inferredFacts.filter(
+              ({ subjectEntityLocalId }) =>
+                entityIds.includes(subjectEntityLocalId),
+            );
 
-            if (!sourceEntity || !targetEntity) {
-              return {
-                ...toolCall,
-                output: dedent(`
-                  There is no ${input.existingEntities ? "existing or " : ""} proposed entity with ID "${sourceEntityId}".
-                  
-                  ${input.existingEntities ? `Possible existing entity IDs are: ${JSON.stringify(input.existingEntities.map(({ metadata }) => metadata.recordId.entityId))}.` : ""}
-                  Possible proposed entity IDs are: ${JSON.stringify(state.proposedEntities.map(({ localEntityId }) => localEntityId))}.
-                `),
-                isError: true,
-              };
-            }
+            const { proposedEntities: newProposedEntities } =
+              await proposeEntitiesFromFacts({
+                dereferencedEntityTypes: input.allDereferencedEntityTypesById,
+                entitySummaries,
+                existingEntitySummaries: input.existingEntitySummaries,
+                facts: relevantFacts,
+              });
 
-            const validLinkEntityTypeIds =
-              input.linkEntityTypes?.map(({ $id }) => $id) ?? [];
-
-            if (
-              !validLinkEntityTypeIds.includes(linkEntityTypeId as VersionedUrl)
-            ) {
-              return {
-                ...toolCall,
-                output: dedent(`
-                  The link entity type ID "${linkEntityTypeId}" is invalid.
-                  
-                  Valid link entity type IDs are: ${JSON.stringify(validLinkEntityTypeIds)}.
-                `),
-                isError: true,
-              };
-            }
-
-            /** @todo: improve generation of local entity id */
-            const localEntityId = `${linkEntityTypeId}-${state.proposedEntities.length}`;
-
-            state.proposedEntities.push({
-              localEntityId,
-              entityTypeId: linkEntityTypeId as VersionedUrl,
-              sourceEntityId:
-                "metadata" in sourceEntity
-                  ? {
-                      kind: "existing-entity",
-                      entityId: sourceEntity.metadata.recordId.entityId,
-                    }
-                  : {
-                      kind: "proposed-entity",
-                      localId: sourceEntity.localEntityId,
-                    },
-              targetEntityId:
-                "metadata" in targetEntity
-                  ? {
-                      kind: "existing-entity",
-                      entityId: targetEntity.metadata.recordId.entityId,
-                    }
-                  : {
-                      kind: "proposed-entity",
-                      localId: targetEntity.localEntityId,
-                    },
+            state.proposedEntities = [
               /**
-               * @todo: allow the agent to specify link properties.
+               * Filter out any previous proposed entities that have been re-proposed
+               * with new facts.
+               *
+               * This may occur when the coordinator agent identifies that entities are
+               * missing some properties after having proposed them, and conducts further
+               * fact gathering research to fill in the missing properties.
                */
-              properties: {},
-            });
-
-            state.submittedEntityIds.push(localEntityId);
-
-            let submittedSourceProposedEntityId: string | undefined;
-
-            if (
-              "localEntityId" in sourceEntity &&
-              !state.submittedEntityIds.includes(sourceEntity.localEntityId)
-            ) {
-              state.submittedEntityIds.push(sourceEntity.localEntityId);
-              submittedSourceProposedEntityId = sourceEntity.localEntityId;
-            }
-
-            let submittedTargetProposedEntityId: string | undefined;
-            if (
-              "localEntityId" in targetEntity &&
-              !state.submittedEntityIds.includes(targetEntity.localEntityId)
-            ) {
-              state.submittedEntityIds.push(targetEntity.localEntityId);
-              submittedTargetProposedEntityId = targetEntity.localEntityId;
-            }
+              ...state.proposedEntities.filter(
+                ({ localEntityId }) =>
+                  !newProposedEntities.some(
+                    (newProposedEntity) =>
+                      newProposedEntity.localEntityId === localEntityId,
+                  ),
+              ),
+              ...newProposedEntities,
+            ];
 
             return {
               ...toolCall,
               output: dedent(`
-                The link between the entities with IDs ${sourceEntityId} and ${targetEntityId} has been successfully proposed and submitted.
-                ${submittedSourceProposedEntityId ? `The source proposed entity with ID ${sourceEntityId} has also been submitted.` : ""}
-                ${submittedTargetProposedEntityId ? `The target proposed entity with ID ${targetEntityId} has also been submitted.` : ""}
+                ${newProposedEntities.length} entities were successfully proposed.
               `),
+            };
+          } else if (toolCall.name === "startFactGatheringSubTasks") {
+            const { subTasks } =
+              toolCall.input as CoordinatorToolCallArguments["startFactGatheringSubTasks"];
+
+            let counter = 0;
+
+            const subTasksWithIds = subTasks.map((subTask) => ({
+              ...subTask,
+              subTaskId: `${counter++}`,
+            }));
+
+            const { acceptedSubTasks, rejectedSubTasks } =
+              await checkSubTasksAgent({
+                input,
+                state,
+                subTasks: subTasksWithIds,
+              });
+
+            const responsesWithSubTask = await Promise.all(
+              subTasksWithIds
+                .filter((subTask) =>
+                  acceptedSubTasks.some(
+                    ({ subTaskId }) => subTaskId === subTask.subTaskId,
+                  ),
+                )
+                .map(async (subTask) => {
+                  const {
+                    goal,
+                    relevantEntityIds,
+                    entityTypeIds,
+                    linkEntityTypeIds,
+                    explanation,
+                  } = subTask;
+
+                  const entityTypes = input.entityTypes.filter(({ $id }) =>
+                    entityTypeIds.includes($id),
+                  );
+
+                  const linkEntityTypes = input.linkEntityTypes?.filter(
+                    ({ $id }) => linkEntityTypeIds?.includes($id) ?? false,
+                  );
+
+                  const relevantEntities =
+                    state.inferredFactsAboutEntities.filter(({ localId }) =>
+                      relevantEntityIds.includes(localId),
+                    );
+
+                  const existingFactsAboutRelevantEntities =
+                    state.inferredFacts.filter(({ subjectEntityLocalId }) =>
+                      relevantEntityIds.includes(subjectEntityLocalId),
+                    );
+
+                  logProgress([
+                    {
+                      type: "StartedSubTask",
+                      explanation,
+                      goal,
+                      recordedAt: new Date().toISOString(),
+                      stepId,
+                    },
+                  ]);
+
+                  const response = await runSubTaskAgent({
+                    input: {
+                      goal,
+                      relevantEntities,
+                      existingFactsAboutRelevantEntities,
+                      entityTypes,
+                      linkEntityTypes,
+                    },
+                  });
+
+                  return { response, subTask };
+                }),
+            );
+
+            const inferredFacts: Fact[] = [];
+            const inferredFactsAboutEntities: LocalEntitySummary[] = [];
+            const filesUsedToInferFacts: AccessedRemoteFile[] = [];
+
+            let output: string = "";
+
+            for (const { response, subTask } of responsesWithSubTask) {
+              inferredFactsAboutEntities.push(...response.discoveredEntities);
+              inferredFacts.push(...response.discoveredFacts);
+              filesUsedToInferFacts.push(...response.filesUsedToInferFacts);
+
+              if (response.status === "ok") {
+                output += `The sub-task with goal "${subTask.goal}" resulted in ${response.discoveredFacts.length} new facts. ${response.explanation}\n`;
+              } else {
+                output += `An error was encountered when completing the sub-task with goal "${subTask.goal}": ${response.reason}\n`;
+              }
+            }
+
+            for (const { subTaskId, reason } of rejectedSubTasks) {
+              const { goal } = subTasksWithIds.find(
+                (subTask) => subTask.subTaskId === subTaskId,
+              )!;
+
+              output += `The sub-task with goal "${goal}" was rejected for the following reason: ${reason}\n`;
+            }
+
+            if (inferredFactsAboutEntities.length > 0) {
+              await updateStateFromInferredFacts({
+                input,
+                state,
+                inferredFacts,
+                inferredFactsAboutEntities,
+                filesUsedToInferFacts,
+              });
+            }
+
+            return {
+              ...toolCall,
+              output,
             };
           } else if (toolCall.name === "complete") {
             if (!state.hasConductedCheckStep) {
@@ -415,9 +700,6 @@ export const researchEntitiesAction: FlowActionActivity = async ({
                     You have not proposed any links for the following link types: ${JSON.stringify(
                       missingLinkEntityTypes.map(({ $id }) => $id),
                     )}
-
-                    You can propose links using the "proposeAndSubmitLink" tool, or infer links
-                      from the text of a web page with the "inferEntitiesFromWebPage" tool.
                 `),
                 );
               }
@@ -473,6 +755,10 @@ export const researchEntitiesAction: FlowActionActivity = async ({
 
     state.previousCalls = [...state.previousCalls, { completedToolCalls }];
 
+    if (testingParams?.persistState) {
+      testingParams.persistState(state);
+    }
+
     const { toolCalls: nextToolCalls } =
       await coordinatingAgent.getNextToolCalls({
         input,
@@ -494,9 +780,9 @@ export const researchEntitiesAction: FlowActionActivity = async ({
     .flatMap((submittedProposedEntity) => {
       const sourcesUsedToProposeEntity = [
         ...(submittedProposedEntity.provenance?.sources ?? []),
-        ...(submittedProposedEntity.propertyMetadata?.flatMap(
-          ({ metadata }) => metadata.provenance?.sources ?? [],
-        ) ?? []),
+        ...flattenPropertyMetadata(
+          submittedProposedEntity.propertyMetadata ?? {},
+        ).flatMap(({ metadata }) => metadata.provenance?.sources ?? []),
       ];
 
       return sourcesUsedToProposeEntity.flatMap(({ location }) => {
@@ -512,6 +798,16 @@ export const researchEntitiesAction: FlowActionActivity = async ({
         all.findIndex((file) => file.url === url) === index,
     );
 
+  const fileEditionProvenance: ProposedEntity["provenance"] = {
+    actorType: "ai",
+    // @ts-expect-error - `ProvidedEntityEditionProvenanceOrigin` is not being generated correctly from the Graph API
+    origin: {
+      type: "flow",
+      id: flowEntityId,
+      stepIds: [stepId],
+    } satisfies OriginProvenance,
+  };
+
   /**
    * We return additional proposed entities for each file that was used to propose
    * the submitted entities, so that these are persisted in the graph.
@@ -521,10 +817,11 @@ export const researchEntitiesAction: FlowActionActivity = async ({
   const fileEntityProposals: ProposedEntity[] =
     filesUsedToProposeSubmittedEntities.map(({ url, entityTypeId }) => ({
       /**
-       * @todo: set the web page this file was discovered in (if applicable) in the property provenance
+       * @todo: H-2728 set the web page this file was discovered in (if applicable) in the property provenance
        * for the `fileUrl`
        */
-      propertyMetadata: [],
+      propertyMetadata: {},
+      provenance: fileEditionProvenance,
       entityTypeId,
       localEntityId: generateUuid(),
       properties: {
@@ -534,7 +831,6 @@ export const researchEntitiesAction: FlowActionActivity = async ({
     }));
 
   const now = new Date().toISOString();
-  const stepId = Context.current().info.activityId;
 
   logProgress(
     fileEntityProposals.map((proposedFileEntity) => ({
@@ -545,6 +841,9 @@ export const researchEntitiesAction: FlowActionActivity = async ({
     })),
   );
 
+  logger.debug(
+    `Submitted Proposed Entities: ${stringify(submittedProposedEntities)}`,
+  );
   logger.debug(`File Entities Proposed: ${stringify(fileEntityProposals)}`);
 
   return {

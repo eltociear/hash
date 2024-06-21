@@ -7,8 +7,7 @@ use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     knowledge::{
         entity::{EntityId, ProvidedEntityEditionProvenance},
-        Property, PropertyMetadataMap, PropertyObject, PropertyPatchOperation, PropertyPath,
-        PropertyProvenance,
+        Property, PropertyMetadataObject, PropertyObject, PropertyPatchOperation, PropertyPath,
     },
     owned_by_id::OwnedById,
 };
@@ -90,7 +89,7 @@ async fn initial_draft() {
                 entity_type_ids: vec![person_entity_type_id()],
                 properties: alice(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: true,
                 relationships: [],
@@ -125,8 +124,7 @@ async fn initial_draft() {
                 properties: vec![PropertyPatchOperation::Replace {
                     path: PropertyPath::default(),
                     value: Property::Object(bob()),
-                    confidence: None,
-                    provenance: PropertyProvenance::default(),
+                    metadata: None,
                 }],
                 entity_type_ids: vec![],
                 archived: None,
@@ -140,13 +138,21 @@ async fn initial_draft() {
         .expect("could not update entity");
 
     assert_eq!(
-        updated_entity.record_id.entity_id,
+        updated_entity.metadata.record_id.entity_id,
         entity.record_id.entity_id
     );
-    assert!(check_entity_exists(&api, updated_entity.record_id.entity_id).await);
-    assert!(updated_entity.record_id.entity_id.draft_id.is_some());
+    assert!(check_entity_exists(&api, updated_entity.metadata.record_id.entity_id).await);
     assert!(
         updated_entity
+            .metadata
+            .record_id
+            .entity_id
+            .draft_id
+            .is_some()
+    );
+    assert!(
+        updated_entity
+            .metadata
             .provenance
             .inferred
             .first_non_draft_created_at_decision_time
@@ -154,6 +160,7 @@ async fn initial_draft() {
     );
     assert!(
         updated_entity
+            .metadata
             .provenance
             .inferred
             .first_non_draft_created_at_transaction_time
@@ -164,12 +171,11 @@ async fn initial_draft() {
         .patch_entity(
             api.account_id,
             PatchEntityParams {
-                entity_id: updated_entity.record_id.entity_id,
+                entity_id: updated_entity.metadata.record_id.entity_id,
                 properties: vec![PropertyPatchOperation::Replace {
                     path: PropertyPath::default(),
                     value: Property::Object(charles()),
-                    confidence: None,
-                    provenance: PropertyProvenance::default(),
+                    metadata: None,
                 }],
                 entity_type_ids: vec![],
                 archived: None,
@@ -183,29 +189,46 @@ async fn initial_draft() {
         .expect("could not update entity");
 
     assert_eq!(
-        updated_entity.record_id.entity_id.owned_by_id,
-        updated_live_entity.record_id.entity_id.owned_by_id
+        updated_entity.metadata.record_id.entity_id.owned_by_id,
+        updated_live_entity.metadata.record_id.entity_id.owned_by_id
     );
     assert_eq!(
-        updated_entity.record_id.entity_id.entity_uuid,
-        updated_live_entity.record_id.entity_id.entity_uuid
+        updated_entity.metadata.record_id.entity_id.entity_uuid,
+        updated_live_entity.metadata.record_id.entity_id.entity_uuid
     );
-    assert!(updated_live_entity.record_id.entity_id.draft_id.is_none());
+    assert!(
+        updated_live_entity
+            .metadata
+            .record_id
+            .entity_id
+            .draft_id
+            .is_none()
+    );
 
-    assert!(!check_entity_exists(&api, updated_entity.record_id.entity_id).await);
-    assert!(check_entity_exists(&api, updated_live_entity.record_id.entity_id).await);
-    assert!(updated_live_entity.record_id.entity_id.draft_id.is_none());
+    assert!(!check_entity_exists(&api, updated_entity.metadata.record_id.entity_id).await);
+    assert!(check_entity_exists(&api, updated_live_entity.metadata.record_id.entity_id).await);
+    assert!(
+        updated_live_entity
+            .metadata
+            .record_id
+            .entity_id
+            .draft_id
+            .is_none()
+    );
 
     let ClosedTemporalBound::Inclusive(undraft_transaction_time) = updated_live_entity
+        .metadata
         .temporal_versioning
         .transaction_time
         .start();
     let ClosedTemporalBound::Inclusive(undraft_decision_time) = updated_live_entity
+        .metadata
         .temporal_versioning
         .decision_time
         .start();
     assert_eq!(
         updated_live_entity
+            .metadata
             .provenance
             .inferred
             .first_non_draft_created_at_transaction_time,
@@ -213,6 +236,7 @@ async fn initial_draft() {
     );
     assert_eq!(
         updated_live_entity
+            .metadata
             .provenance
             .inferred
             .first_non_draft_created_at_decision_time,
@@ -236,7 +260,7 @@ async fn no_initial_draft() {
                 entity_type_ids: vec![person_entity_type_id()],
                 properties: alice(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: false,
                 relationships: [],
@@ -276,8 +300,7 @@ async fn no_initial_draft() {
                     properties: vec![PropertyPatchOperation::Replace {
                         path: PropertyPath::default(),
                         value: Property::Object(bob()),
-                        confidence: None,
-                        provenance: PropertyProvenance::default(),
+                        metadata: None,
                     }],
                     entity_type_ids: vec![],
                     archived: None,
@@ -292,17 +315,25 @@ async fn no_initial_draft() {
 
         assert_eq!(
             entity.record_id.entity_id.owned_by_id,
-            updated_entity.record_id.entity_id.owned_by_id
+            updated_entity.metadata.record_id.entity_id.owned_by_id
         );
         assert_eq!(
             entity.record_id.entity_id.entity_uuid,
-            updated_entity.record_id.entity_id.entity_uuid
+            updated_entity.metadata.record_id.entity_id.entity_uuid
         );
-        assert!(updated_entity.record_id.entity_id.draft_id.is_some());
+        assert!(
+            updated_entity
+                .metadata
+                .record_id
+                .entity_id
+                .draft_id
+                .is_some()
+        );
         assert!(check_entity_exists(&api, entity.record_id.entity_id).await);
-        assert!(check_entity_exists(&api, updated_entity.record_id.entity_id).await);
+        assert!(check_entity_exists(&api, updated_entity.metadata.record_id.entity_id).await);
         assert_eq!(
             updated_entity
+                .metadata
                 .provenance
                 .inferred
                 .first_non_draft_created_at_transaction_time,
@@ -310,6 +341,7 @@ async fn no_initial_draft() {
         );
         assert_eq!(
             updated_entity
+                .metadata
                 .provenance
                 .inferred
                 .first_non_draft_created_at_decision_time,
@@ -320,12 +352,11 @@ async fn no_initial_draft() {
             .patch_entity(
                 api.account_id,
                 PatchEntityParams {
-                    entity_id: updated_entity.record_id.entity_id,
+                    entity_id: updated_entity.metadata.record_id.entity_id,
                     properties: vec![PropertyPatchOperation::Replace {
                         path: PropertyPath::default(),
                         value: Property::Object(charles()),
-                        confidence: None,
-                        provenance: PropertyProvenance::default(),
+                        metadata: None,
                     }],
                     entity_type_ids: vec![],
                     archived: None,
@@ -340,13 +371,21 @@ async fn no_initial_draft() {
 
         assert_eq!(
             entity.record_id.entity_id,
-            updated_live_entity.record_id.entity_id
+            updated_live_entity.metadata.record_id.entity_id
         );
-        assert!(updated_live_entity.record_id.entity_id.draft_id.is_none());
-        assert!(!check_entity_exists(&api, updated_entity.record_id.entity_id).await);
-        assert!(check_entity_exists(&api, updated_live_entity.record_id.entity_id).await);
+        assert!(
+            updated_live_entity
+                .metadata
+                .record_id
+                .entity_id
+                .draft_id
+                .is_none()
+        );
+        assert!(!check_entity_exists(&api, updated_entity.metadata.record_id.entity_id).await);
+        assert!(check_entity_exists(&api, updated_live_entity.metadata.record_id.entity_id).await);
         assert_eq!(
             updated_live_entity
+                .metadata
                 .provenance
                 .inferred
                 .first_non_draft_created_at_transaction_time,
@@ -354,6 +393,7 @@ async fn no_initial_draft() {
         );
         assert_eq!(
             updated_live_entity
+                .metadata
                 .provenance
                 .inferred
                 .first_non_draft_created_at_decision_time,
@@ -378,7 +418,7 @@ async fn multiple_drafts() {
                 entity_type_ids: vec![person_entity_type_id()],
                 properties: alice(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: false,
                 relationships: [],
@@ -418,8 +458,7 @@ async fn multiple_drafts() {
                     properties: vec![PropertyPatchOperation::Replace {
                         path: PropertyPath::default(),
                         value: Property::Object(bob()),
-                        confidence: None,
-                        provenance: PropertyProvenance::default(),
+                        metadata: None,
                     }],
                     entity_type_ids: vec![],
                     archived: None,
@@ -434,17 +473,25 @@ async fn multiple_drafts() {
 
         assert_eq!(
             entity.record_id.entity_id.owned_by_id,
-            updated_entity.record_id.entity_id.owned_by_id
+            updated_entity.metadata.record_id.entity_id.owned_by_id
         );
         assert_eq!(
             entity.record_id.entity_id.entity_uuid,
-            updated_entity.record_id.entity_id.entity_uuid
+            updated_entity.metadata.record_id.entity_id.entity_uuid
         );
-        assert!(updated_entity.record_id.entity_id.draft_id.is_some());
+        assert!(
+            updated_entity
+                .metadata
+                .record_id
+                .entity_id
+                .draft_id
+                .is_some()
+        );
         assert!(check_entity_exists(&api, entity.record_id.entity_id).await);
-        assert!(check_entity_exists(&api, updated_entity.record_id.entity_id).await);
+        assert!(check_entity_exists(&api, updated_entity.metadata.record_id.entity_id).await);
         assert_eq!(
             updated_entity
+                .metadata
                 .provenance
                 .inferred
                 .first_non_draft_created_at_transaction_time,
@@ -452,12 +499,13 @@ async fn multiple_drafts() {
         );
         assert_eq!(
             updated_entity
+                .metadata
                 .provenance
                 .inferred
                 .first_non_draft_created_at_decision_time,
             Some(*undraft_decision_time)
         );
-        drafts.push(updated_entity.record_id.entity_id);
+        drafts.push(updated_entity.metadata.record_id.entity_id);
     }
 
     for draft in drafts {
@@ -469,8 +517,7 @@ async fn multiple_drafts() {
                     properties: vec![PropertyPatchOperation::Replace {
                         path: PropertyPath::default(),
                         value: Property::Object(charles()),
-                        confidence: None,
-                        provenance: PropertyProvenance::default(),
+                        metadata: None,
                     }],
                     entity_type_ids: vec![],
                     archived: None,
@@ -485,13 +532,14 @@ async fn multiple_drafts() {
 
         assert_eq!(
             entity.record_id.entity_id,
-            updated_live_entity.record_id.entity_id
+            updated_live_entity.metadata.record_id.entity_id
         );
         assert!(!check_entity_exists(&api, draft).await);
-        assert!(check_entity_exists(&api, updated_live_entity.record_id.entity_id).await);
+        assert!(check_entity_exists(&api, updated_live_entity.metadata.record_id.entity_id).await);
 
         assert_eq!(
             updated_live_entity
+                .metadata
                 .provenance
                 .inferred
                 .first_non_draft_created_at_transaction_time,
@@ -499,6 +547,7 @@ async fn multiple_drafts() {
         );
         assert_eq!(
             updated_live_entity
+                .metadata
                 .provenance
                 .inferred
                 .first_non_draft_created_at_decision_time,

@@ -1,6 +1,6 @@
-use std::collections::HashSet;
 #[cfg(feature = "postgres")]
-use std::error::Error;
+use core::error::Error;
+use std::collections::HashSet;
 
 #[cfg(feature = "postgres")]
 use bytes::BytesMut;
@@ -54,7 +54,7 @@ pub struct Location {
 /// The source material used in producing a value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourceProvenance {
     /// The type of source material.
     #[serde(rename = "type")]
@@ -132,12 +132,14 @@ pub struct OriginProvenance {
     pub session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key_public_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_agent: Option<String>,
 }
 
 #[cfg(feature = "utoipa")]
 impl<'__s> ToSchema<'__s> for OriginProvenance {
     fn schema() -> (&'__s str, RefOr<Schema>) {
-        let common_types: [(&'static str, RefOr<Schema>); 7] = [
+        let common_types: [(&'static str, RefOr<Schema>); 8] = [
             (
                 "id",
                 RefOr::T(Schema::from(
@@ -181,6 +183,12 @@ provides.",
             ),
             (
                 "apiKeyPublicId",
+                RefOr::T(Schema::from(
+                    ObjectBuilder::new().schema_type(SchemaType::String),
+                )),
+            ),
+            (
+                "userAgent",
                 RefOr::T(Schema::from(
                     ObjectBuilder::new().schema_type(SchemaType::String),
                 )),

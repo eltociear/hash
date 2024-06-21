@@ -106,8 +106,8 @@ module "temporal" {
   cpu                 = 256
   memory              = 512
   # TODO: provide by the HASH variables.tf
-  temporal_version    = "1.21.0.0"
-  temporal_ui_version = "2.16.2"
+  temporal_version    = "1.23.1.0"
+  temporal_ui_version = "2.27.2"
 
   postgres_host          = module.postgres.pg_host
   postgres_port          = module.postgres.pg_port
@@ -297,9 +297,12 @@ module "application" {
     },
   ])
   api_image              = module.api_ecr
-  api_migration_env_vars = concat(var.hash_api_migration_env_vars, [
-  ])
+  api_migration_env_vars = var.hash_api_migration_env_vars
   api_env_vars = concat(var.hash_api_env_vars, [
+    {
+      name  = "ACCESS_FORM_SLACK_WEBHOOK_URL", secret = true,
+      value = sensitive(data.vault_kv_secret_v2.secrets.data["access_form_slack_webhook_url"])
+    },
     {
       name  = "MAILCHIMP_API_KEY", secret = true,
       value = sensitive(data.vault_kv_secret_v2.secrets.data["mailchimp_api_key"])
@@ -361,6 +364,14 @@ module "application" {
       name  = "HASH_VAULT_ROOT_TOKEN", secret = true,
       value = sensitive(data.vault_kv_secret_v2.secrets.data["hash_vault_root_token"])
     },
+    {
+      name  = "INTERNAL_API_HOST", secret = true,
+      value = sensitive(data.vault_kv_secret_v2.secrets.data["internal_api_host"])
+    },
+    {
+      name  = "INTERNAL_API_KEY", secret = true,
+      value = sensitive(data.vault_kv_secret_v2.secrets.data["internal_api_key"])
+    },
     #    { name = "LINEAR_CLIENT_ID", secret = true, value = sensitive(data.vault_kv_secret_v2.secrets.data["linear_client_id"]) },
     #    { name = "LINEAR_CLIENT_SECRET", secret = true, value = sensitive(data.vault_kv_secret_v2.secrets.data["linear_client_secret"]) },
     {
@@ -382,6 +393,10 @@ module "application" {
     {
       name  = "ANTHROPIC_API_KEY", secret = true,
       value = sensitive(data.vault_kv_secret_v2.secrets.data["hash_anthropic_api_key"])
+    },
+    {
+      name  = "INTERNAL_API_HOST", secret = true,
+      value = sensitive(data.vault_kv_secret_v2.secrets.data["internal_api_host"])
     },
     {
       name  = "INTERNAL_API_KEY", secret = true,
@@ -420,6 +435,14 @@ module "application" {
       name  = "AWS_S3_UPLOADS_SECRET_ACCESS_KEY", secret = true,
       value = sensitive(data.vault_kv_secret_v2.secrets.data["aws_s3_uploads_secret_access_key"])
     },
+    {
+      name = "HASH_TEMPORAL_WORKER_AI_AWS_ACCESS_KEY_ID", secret = true,
+      value = sensitive(data.vault_kv_secret_v2.secrets.data["hash_temporal_worker_ai_aws_access_key_id"])
+    },
+    {
+      name = "HASH_TEMPORAL_WORKER_AI_AWS_SECRET_ACCESS_KEY", secret = true,
+      value = sensitive(data.vault_kv_secret_v2.secrets.data["hash_temporal_worker_ai_aws_secret_access_key"])
+    }
   ]
   temporal_worker_integration_image    = module.temporal_worker_integration_ecr
   temporal_worker_integration_env_vars = [

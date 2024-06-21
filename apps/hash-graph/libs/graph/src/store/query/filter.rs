@@ -1,6 +1,7 @@
-use std::{borrow::Cow, fmt, mem, str::FromStr};
+use alloc::borrow::Cow;
+use core::{fmt, mem, str::FromStr};
 
-use derivative::Derivative;
+use derive_where::derive_where;
 use error_stack::{bail, Context, Report, ResultExt};
 use graph_types::{
     knowledge::entity::{Entity, EntityId},
@@ -23,17 +24,13 @@ use crate::{
 };
 
 /// A set of conditions used for queries.
-#[derive(Derivative, Deserialize)]
-#[derivative(
-    Debug(bound = "R::QueryPath<'p>: fmt::Debug"),
-    PartialEq(bound = "R::QueryPath<'p>: PartialEq"),
-    Clone(bound = "R::QueryPath<'p>: Clone")
-)]
+#[derive(Deserialize)]
+#[derive_where(Debug, Clone, PartialEq; R::QueryPath<'p>)]
 #[serde(
     rename_all = "camelCase",
     bound = "'de: 'p, R::QueryPath<'p>: Deserialize<'de>"
 )]
-pub enum Filter<'p, R: QueryRecord + ?Sized> {
+pub enum Filter<'p, R: QueryRecord> {
     All(Vec<Self>),
     Any(Vec<Self>),
     Not(Box<Self>),
@@ -45,6 +42,10 @@ pub enum Filter<'p, R: QueryRecord + ?Sized> {
         Option<FilterExpression<'p, R>>,
         Option<FilterExpression<'p, R>>,
     ),
+    Greater(FilterExpression<'p, R>, FilterExpression<'p, R>),
+    GreaterOrEqual(FilterExpression<'p, R>, FilterExpression<'p, R>),
+    Less(FilterExpression<'p, R>, FilterExpression<'p, R>),
+    LessOrEqual(FilterExpression<'p, R>, FilterExpression<'p, R>),
     CosineDistance(
         FilterExpression<'p, R>,
         FilterExpression<'p, R>,
@@ -169,6 +170,16 @@ where
                 ) => parameter.convert_to_parameter_type(path.expected_type())?,
                 (..) => {}
             },
+            Self::Greater(lhs, rhs)
+            | Self::GreaterOrEqual(lhs, rhs)
+            | Self::Less(lhs, rhs)
+            | Self::LessOrEqual(lhs, rhs) => match (lhs, rhs) {
+                (FilterExpression::Parameter(parameter), FilterExpression::Path(path))
+                | (FilterExpression::Path(path), FilterExpression::Parameter(parameter)) => {
+                    parameter.convert_to_parameter_type(path.expected_type())?;
+                }
+                (..) => {}
+            },
             Self::CosineDistance(lhs, rhs, max) => {
                 if let FilterExpression::Parameter(parameter) = max {
                     parameter.convert_to_parameter_type(ParameterType::F64)?;
@@ -208,17 +219,13 @@ where
 }
 
 /// A leaf value in a [`Filter`].
-#[derive(Derivative, Deserialize)]
-#[derivative(
-    Debug(bound = "R::QueryPath<'p>: fmt::Debug"),
-    PartialEq(bound = "R::QueryPath<'p>: PartialEq"),
-    Clone(bound = "R::QueryPath<'p>: Clone")
-)]
+#[derive(Deserialize)]
+#[derive_where(Debug, Clone, PartialEq; R::QueryPath<'p>)]
 #[serde(
     rename_all = "camelCase",
     bound = "'de: 'p, R::QueryPath<'p>: Deserialize<'de>"
 )]
-pub enum FilterExpression<'p, R: QueryRecord + ?Sized> {
+pub enum FilterExpression<'p, R: QueryRecord> {
     Path(R::QueryPath<'p>),
     Parameter(Parameter<'p>),
 }

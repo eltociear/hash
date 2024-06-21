@@ -12,10 +12,11 @@ import wasm from "@blockprotocol/type-system/type-system.wasm";
 import type { EmotionCache } from "@emotion/react";
 import { CacheProvider } from "@emotion/react";
 import { createEmotionCache, theme } from "@hashintel/design-system/theme";
+import type { Entity } from "@local/hash-graph-sdk/entity";
 import type { FeatureFlag } from "@local/hash-isomorphic-utils/feature-flags";
 import { featureFlags } from "@local/hash-isomorphic-utils/feature-flags";
 import type { UserProperties } from "@local/hash-isomorphic-utils/system-types/user";
-import type { Entity, EntityRootType, Subgraph } from "@local/hash-subgraph";
+import type { EntityRootType, Subgraph } from "@local/hash-subgraph";
 import { getRoots } from "@local/hash-subgraph/stdlib";
 import { CssBaseline, GlobalStyles, ThemeProvider } from "@mui/material";
 import { configureScope, ErrorBoundary } from "@sentry/nextjs";
@@ -26,9 +27,15 @@ import { SnackbarProvider } from "notistack";
 import type { FunctionComponent, PropsWithChildren } from "react";
 import { Suspense, useEffect, useState } from "react";
 
-import type { HasAccessToHashQuery, MeQuery } from "../graphql/api-types.gen";
+import type {
+  GetHashInstanceSettingsQueryQuery,
+  HasAccessToHashQuery,
+  MeQuery,
+} from "../graphql/api-types.gen";
+import { getHashInstanceSettings } from "../graphql/queries/knowledge/hash-instance.queries";
 import { hasAccessToHashQuery, meQuery } from "../graphql/queries/user.queries";
 import { apolloClient } from "../lib/apollo-client";
+import type { MinimalUser } from "../lib/user-and-org";
 import { constructMinimalUser } from "../lib/user-and-org";
 import { DraftEntitiesContextProvider } from "../shared/draft-entities-context";
 import { EntityTypesContextProvider } from "../shared/entity-types-context/provider";
@@ -86,6 +93,7 @@ const clientSideEmotionCache = createEmotionCache();
 
 type AppInitialProps = {
   initialAuthenticatedUserSubgraph?: Subgraph<EntityRootType>;
+  user?: MinimalUser;
 };
 
 type AppProps = {
@@ -195,12 +203,13 @@ const App: FunctionComponent<AppProps> = ({
 const AppWithTypeSystemContextProvider: AppPage<AppProps, AppInitialProps> = (
   props,
 ) => {
-  const { initialAuthenticatedUserSubgraph } = props;
+  const { initialAuthenticatedUserSubgraph, user } = props;
 
   return (
     <ApolloProvider client={apolloClient}>
       <AuthInfoProvider
         initialAuthenticatedUserSubgraph={initialAuthenticatedUserSubgraph}
+        key={user?.accountId}
       >
         <App {...props} />
       </AuthInfoProvider>
@@ -214,6 +223,7 @@ const publiclyAccessiblePagePathnames = [
   "/signin",
   "/signup",
   "/recovery",
+  "/",
 ];
 
 /**
@@ -225,6 +235,8 @@ const featureFlagHiddenPathnames: Record<FeatureFlag, string[]> = {
   documents: [],
   canvases: [],
   notes: ["/notes"],
+  workers: ["/goals", "/flows", "/workers"],
+  ai: ["/goals"],
 };
 
 AppWithTypeSystemContextProvider.getInitialProps = async (appContext) => {
@@ -306,12 +318,21 @@ AppWithTypeSystemContextProvider.getInitialProps = async (appContext) => {
       !user.enabledFeatureFlags.includes(featureFlag) &&
       featureFlagHiddenPathnames[featureFlag].includes(pathname)
     ) {
-      // ...then redirect them to the home page instead.
-      redirectInGetInitialProps({ appContext, location: "/" });
+      const isUserAdmin = await apolloClient
+        .query<GetHashInstanceSettingsQueryQuery>({
+          query: getHashInstanceSettings,
+          context: { headers: { cookie } },
+        })
+        .then(({ data }) => !!data.hashInstanceSettings?.isUserAdmin);
+
+      if (!isUserAdmin) {
+        // ...then redirect them to the home page instead.
+        redirectInGetInitialProps({ appContext, location: "/" });
+      }
     }
   }
 
-  return { initialAuthenticatedUserSubgraph };
+  return { initialAuthenticatedUserSubgraph, user };
 };
 
 export default AppWithTypeSystemContextProvider;

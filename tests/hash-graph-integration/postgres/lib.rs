@@ -9,10 +9,13 @@
     reason = "This should be enabled but it's currently too noisy"
 )]
 
+extern crate alloc;
+
 mod data_type;
 mod drafts;
 mod entity;
 mod entity_type;
+mod interconnected_graph;
 mod links;
 mod multi_type;
 mod partial_updates;
@@ -43,6 +46,7 @@ use graph::{
         },
         ontology::{
             ArchiveDataTypeParams, ArchiveEntityTypeParams, ArchivePropertyTypeParams,
+            CountDataTypesParams, CountEntityTypesParams, CountPropertyTypesParams,
             CreateDataTypeParams, CreateEntityTypeParams, CreatePropertyTypeParams,
             GetDataTypeSubgraphParams, GetDataTypeSubgraphResponse, GetDataTypesParams,
             GetDataTypesResponse, GetEntityTypeSubgraphParams, GetEntityTypeSubgraphResponse,
@@ -52,9 +56,9 @@ use graph::{
             UpdateDataTypeEmbeddingParams, UpdateDataTypesParams, UpdateEntityTypeEmbeddingParams,
             UpdateEntityTypesParams, UpdatePropertyTypeEmbeddingParams, UpdatePropertyTypesParams,
         },
-        AccountStore, ConflictBehavior, DataTypeStore, DatabaseConnectionInfo, DatabaseType,
-        EntityStore, EntityTypeStore, InsertionError, PostgresStore, PostgresStorePool,
-        PropertyTypeStore, QueryError, StorePool, UpdateError,
+        AccountStore, ConflictBehavior, DataTypeStore, DatabaseConnectionInfo, DatabasePoolConfig,
+        DatabaseType, EntityStore, EntityTypeStore, InsertionError, PostgresStore,
+        PostgresStorePool, PropertyTypeStore, QueryError, StorePool, UpdateError,
     },
     Environment,
 };
@@ -159,7 +163,7 @@ impl DatabaseTestWrapper<NoAuthorization> {
             database,
         );
 
-        let pool = PostgresStorePool::new(&connection_info, NoTls)
+        let pool = PostgresStorePool::new(&connection_info, &DatabasePoolConfig::default(), NoTls)
             .await
             .expect("could not connect to database");
 
@@ -285,20 +289,82 @@ impl<A: AuthorizationApi> DataTypeStore for DatabaseApi<'_, A> {
         self.store.create_data_types(actor_id, params).await
     }
 
+    async fn count_data_types(
+        &self,
+        actor_id: AccountId,
+        params: CountDataTypesParams<'_>,
+    ) -> Result<usize, QueryError> {
+        self.store.count_data_types(actor_id, params).await
+    }
+
     async fn get_data_types(
         &self,
         actor_id: AccountId,
-        params: GetDataTypesParams<'_>,
+        mut params: GetDataTypesParams<'_>,
     ) -> Result<GetDataTypesResponse, QueryError> {
-        self.store.get_data_types(actor_id, params).await
+        let include_count = params.include_count;
+        let has_limit = params.limit.is_some();
+        params.include_count = true;
+
+        let count = self
+            .count_data_types(
+                actor_id,
+                CountDataTypesParams {
+                    filter: params.filter.clone(),
+                    temporal_axes: params.temporal_axes.clone(),
+                    include_drafts: params.include_drafts,
+                },
+            )
+            .await?;
+
+        let mut response = self.store.get_data_types(actor_id, params).await?;
+
+        // We can ensure that `count_data_types` and `get_data_types` return the same count;
+        assert_eq!(response.count, Some(count));
+        // if the limit is not set, the count should be equal to the number of data types returned
+        if !has_limit {
+            assert_eq!(count, response.data_types.len());
+        }
+
+        if !include_count {
+            response.count = None;
+        }
+        Ok(response)
     }
 
     async fn get_data_type_subgraph(
         &self,
         actor_id: AccountId,
-        params: GetDataTypeSubgraphParams<'_>,
+        mut params: GetDataTypeSubgraphParams<'_>,
     ) -> Result<GetDataTypeSubgraphResponse, QueryError> {
-        self.store.get_data_type_subgraph(actor_id, params).await
+        let include_count = params.include_count;
+        let has_limit = params.limit.is_some();
+        params.include_count = true;
+
+        let count = self
+            .count_data_types(
+                actor_id,
+                CountDataTypesParams {
+                    filter: params.filter.clone(),
+                    temporal_axes: params.temporal_axes.clone(),
+                    include_drafts: params.include_drafts,
+                },
+            )
+            .await?;
+
+        let mut response = self.store.get_data_type_subgraph(actor_id, params).await?;
+
+        // We can ensure that `count_data_types` and `get_data_type_subgraph` return the same count;
+        assert_eq!(response.count, Some(count));
+        // if the limit is not set, the count should be equal to the number of data types returned
+        if !has_limit {
+            assert_eq!(count, response.subgraph.roots.len());
+        }
+
+        if !include_count {
+            response.count = None;
+        }
+        Ok(response)
     }
 
     async fn update_data_type<R>(
@@ -352,22 +418,88 @@ impl<A: AuthorizationApi> PropertyTypeStore for DatabaseApi<'_, A> {
         self.store.create_property_types(actor_id, params).await
     }
 
+    async fn count_property_types(
+        &self,
+        actor_id: AccountId,
+        params: CountPropertyTypesParams<'_>,
+    ) -> Result<usize, QueryError> {
+        self.store.count_property_types(actor_id, params).await
+    }
+
     async fn get_property_types(
         &self,
         actor_id: AccountId,
-        params: GetPropertyTypesParams<'_>,
+        mut params: GetPropertyTypesParams<'_>,
     ) -> Result<GetPropertyTypesResponse, QueryError> {
-        self.store.get_property_types(actor_id, params).await
+        let include_count = params.include_count;
+        let has_limit = params.limit.is_some();
+        params.include_count = true;
+
+        let count = self
+            .count_property_types(
+                actor_id,
+                CountPropertyTypesParams {
+                    filter: params.filter.clone(),
+                    temporal_axes: params.temporal_axes.clone(),
+                    include_drafts: params.include_drafts,
+                },
+            )
+            .await?;
+
+        let mut response = self.store.get_property_types(actor_id, params).await?;
+
+        // We can ensure that `count_property_types` and `get_property_types` return the same count;
+        assert_eq!(response.count, Some(count));
+        // if the limit is not set, the count should be equal to the number of property types
+        // returned
+        if !has_limit {
+            assert_eq!(count, response.property_types.len());
+        }
+
+        if !include_count {
+            response.count = None;
+        }
+        Ok(response)
     }
 
     async fn get_property_type_subgraph(
         &self,
         actor_id: AccountId,
-        params: GetPropertyTypeSubgraphParams<'_>,
+        mut params: GetPropertyTypeSubgraphParams<'_>,
     ) -> Result<GetPropertyTypeSubgraphResponse, QueryError> {
-        self.store
+        let include_count = params.include_count;
+        let has_limit = params.limit.is_some();
+        params.include_count = true;
+
+        let count = self
+            .count_property_types(
+                actor_id,
+                CountPropertyTypesParams {
+                    filter: params.filter.clone(),
+                    temporal_axes: params.temporal_axes.clone(),
+                    include_drafts: params.include_drafts,
+                },
+            )
+            .await?;
+
+        let mut response = self
+            .store
             .get_property_type_subgraph(actor_id, params)
-            .await
+            .await?;
+
+        // We can ensure that `count_property_types` and `get_property_type_subgraph` return the
+        // same count;
+        assert_eq!(response.count, Some(count));
+        // if the limit is not set, the count should be equal to the number of property types
+        // returned
+        if !has_limit {
+            assert_eq!(count, response.subgraph.roots.len());
+        }
+
+        if !include_count {
+            response.count = None;
+        }
+        Ok(response)
     }
 
     async fn update_property_type<R>(
@@ -421,20 +553,86 @@ impl<A: AuthorizationApi> EntityTypeStore for DatabaseApi<'_, A> {
         self.store.create_entity_types(actor_id, params).await
     }
 
+    async fn count_entity_types(
+        &self,
+        actor_id: AccountId,
+        params: CountEntityTypesParams<'_>,
+    ) -> Result<usize, QueryError> {
+        self.store.count_entity_types(actor_id, params).await
+    }
+
     async fn get_entity_types(
         &self,
         actor_id: AccountId,
-        params: GetEntityTypesParams<'_>,
+        mut params: GetEntityTypesParams<'_>,
     ) -> Result<GetEntityTypesResponse, QueryError> {
-        self.store.get_entity_types(actor_id, params).await
+        let include_count = params.include_count;
+        let has_limit = params.limit.is_some();
+        params.include_count = true;
+
+        let count = self
+            .count_entity_types(
+                actor_id,
+                CountEntityTypesParams {
+                    filter: params.filter.clone(),
+                    temporal_axes: params.temporal_axes.clone(),
+                    include_drafts: params.include_drafts,
+                },
+            )
+            .await?;
+
+        let mut response = self.store.get_entity_types(actor_id, params).await?;
+
+        // We can ensure that `count_entity_types` and `get_entity_types` return the same count;
+        assert_eq!(response.count, Some(count));
+        // if the limit is not set, the count should be equal to the number of entity types returned
+        if !has_limit {
+            assert_eq!(count, response.entity_types.len());
+        }
+
+        if !include_count {
+            response.count = None;
+        }
+        Ok(response)
     }
 
     async fn get_entity_type_subgraph(
         &self,
         actor_id: AccountId,
-        params: GetEntityTypeSubgraphParams<'_>,
+        mut params: GetEntityTypeSubgraphParams<'_>,
     ) -> Result<GetEntityTypeSubgraphResponse, QueryError> {
-        self.store.get_entity_type_subgraph(actor_id, params).await
+        let include_count = params.include_count;
+        let has_limit = params.limit.is_some();
+        params.include_count = true;
+
+        let count = self
+            .count_entity_types(
+                actor_id,
+                CountEntityTypesParams {
+                    filter: params.filter.clone(),
+                    temporal_axes: params.temporal_axes.clone(),
+                    include_drafts: params.include_drafts,
+                },
+            )
+            .await?;
+
+        let mut response = self
+            .store
+            .get_entity_type_subgraph(actor_id, params)
+            .await?;
+
+        // We can ensure that `count_entity_types` and `get_entity_type_subgraph` return the same
+        // count;
+        assert_eq!(response.count, Some(count));
+        // if the limit is not set, the count should be equal to the number of entity types returned
+        if !has_limit {
+            assert_eq!(count, response.subgraph.roots.len());
+        }
+
+        if !include_count {
+            response.count = None;
+        }
+        Ok(response)
     }
 
     async fn update_entity_type<R>(
@@ -594,7 +792,7 @@ where
         &mut self,
         actor_id: AccountId,
         params: PatchEntityParams,
-    ) -> Result<EntityMetadata, UpdateError> {
+    ) -> Result<Entity, UpdateError> {
         self.store.patch_entity(actor_id, params).await
     }
 

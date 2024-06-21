@@ -1,6 +1,6 @@
 #[cfg(feature = "postgres")]
-use std::error::Error;
-use std::{fmt, num::IntErrorKind, str::FromStr};
+use core::error::Error;
+use core::{fmt, num::IntErrorKind, str::FromStr};
 
 pub use error::{ParseBaseUrlError, ParseVersionedUrlError};
 #[cfg(feature = "postgres")]

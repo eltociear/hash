@@ -2,23 +2,24 @@
  * This file was automatically generated – do not edit it.
  */
 
-import type { Entity, LinkData } from "@local/hash-subgraph";
+import type { Entity, LinkEntity } from "@local/hash-graph-sdk/entity";
 
 import type {
   AppliesFromPropertyValue,
   AppliesUntilPropertyValue,
   DateTimeDataType,
   FeatureNamePropertyValue,
-  Flow,
   FlowDefinitionIDPropertyValue,
-  FlowOutgoingLinkAndTarget,
-  FlowOutgoingLinksByLinkEntityTypeId,
-  FlowProperties,
+  FlowRun,
+  FlowRunOutgoingLinkAndTarget,
+  FlowRunOutgoingLinksByLinkEntityTypeId,
+  FlowRunProperties,
   InputUnitCostPropertyValue,
   Link,
   LinkOutgoingLinkAndTarget,
   LinkOutgoingLinksByLinkEntityTypeId,
   LinkProperties,
+  NamePropertyValue,
   NumberDataType,
   ObjectDataType,
   OutputsPropertyValue,
@@ -40,16 +41,17 @@ export type {
   AppliesUntilPropertyValue,
   DateTimeDataType,
   FeatureNamePropertyValue,
-  Flow,
   FlowDefinitionIDPropertyValue,
-  FlowOutgoingLinkAndTarget,
-  FlowOutgoingLinksByLinkEntityTypeId,
-  FlowProperties,
+  FlowRun,
+  FlowRunOutgoingLinkAndTarget,
+  FlowRunOutgoingLinksByLinkEntityTypeId,
+  FlowRunProperties,
   InputUnitCostPropertyValue,
   Link,
   LinkOutgoingLinkAndTarget,
   LinkOutgoingLinksByLinkEntityTypeId,
   LinkProperties,
+  NamePropertyValue,
   NumberDataType,
   ObjectDataType,
   OutputsPropertyValue,
@@ -66,7 +68,7 @@ export type {
   TriggerPropertyValue,
 };
 
-export type Created = Entity<CreatedProperties> & { linkData: LinkData };
+export type Created = LinkEntity<CreatedProperties>;
 
 export type CreatedOutgoingLinkAndTarget = never;
 
@@ -80,14 +82,14 @@ export type CreatedProperties1 = LinkProperties;
 
 export type CreatedProperties2 = {};
 
-export type IncurredIn = Entity<IncurredInProperties> & { linkData: LinkData };
+export type IncurredIn = LinkEntity<IncurredInProperties>;
 
 export type IncurredInOutgoingLinkAndTarget = never;
 
 export type IncurredInOutgoingLinksByLinkEntityTypeId = {};
 
 /**
- * Something that was incurred by something else.
+ * Something that was incurred in something else.
  */
 export type IncurredInProperties = IncurredInProperties1 &
   IncurredInProperties2;
@@ -105,9 +107,7 @@ export type InputUnitCountPropertyValue = NumberDataType;
  */
 export type OutputUnitCountPropertyValue = NumberDataType;
 
-export type RecordsUsageOf = Entity<RecordsUsageOfProperties> & {
-  linkData: LinkData;
-};
+export type RecordsUsageOf = LinkEntity<RecordsUsageOfProperties>;
 
 export type RecordsUsageOfOutgoingLinkAndTarget = never;
 
@@ -122,7 +122,7 @@ export type RecordsUsageOfProperties1 = LinkProperties;
 
 export type RecordsUsageOfProperties2 = {};
 
-export type Updated = Entity<UpdatedProperties> & { linkData: LinkData };
+export type Updated = LinkEntity<UpdatedProperties>;
 
 export type UpdatedOutgoingLinkAndTarget = never;
 
@@ -145,7 +145,7 @@ export type UsageRecordCreatedLink = {
 
 export type UsageRecordIncurredInLink = {
   linkEntity: IncurredIn;
-  rightEntity: Flow;
+  rightEntity: FlowRun;
 };
 
 export type UsageRecordOutgoingLinkAndTarget =
@@ -162,9 +162,15 @@ export type UsageRecordOutgoingLinksByLinkEntityTypeId = {
 };
 
 /**
+ * Additional information about something.
+ */
+export type CustomMetadataPropertyValue = ObjectDataType;
+
+/**
  * A record of usage of a service
  */
 export type UsageRecordProperties = {
+  "https://hash.ai/@hash/types/property-type/custom-metadata/"?: CustomMetadataPropertyValue;
   "https://hash.ai/@hash/types/property-type/input-unit-count/"?: InputUnitCountPropertyValue;
   "https://hash.ai/@hash/types/property-type/output-unit-count/"?: OutputUnitCountPropertyValue;
 };

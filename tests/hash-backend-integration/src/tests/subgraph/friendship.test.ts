@@ -23,24 +23,26 @@ import {
 } from "@apps/hash-api/src/graph/ontology/primitive/property-type";
 import type { VersionedUrl } from "@blockprotocol/type-system";
 import type {
-  GetDataTypesRequest,
+  GetDataTypesParams,
   GetEntitySubgraphRequest,
-  GetEntityTypesRequest,
-  GetPropertyTypesRequest,
+  GetEntityTypesParams,
+  GetPropertyTypesParams,
 } from "@local/hash-graph-client";
+import type { Entity } from "@local/hash-graph-sdk/entity";
+import type { AccountId } from "@local/hash-graph-types/account";
+import type {
+  BaseUrl,
+  EntityTypeWithMetadata,
+} from "@local/hash-graph-types/ontology";
+import type { Timestamp } from "@local/hash-graph-types/temporal-versioning";
 import {
   currentTimeInstantTemporalAxes,
   fullDecisionTimeAxis,
   zeroedGraphResolveDepths,
 } from "@local/hash-isomorphic-utils/graph-queries";
 import type {
-  AccountId,
-  BaseUrl,
-  Entity,
-  EntityTypeWithMetadata,
   OntologyTypeVertexId,
   QueryTemporalAxesUnresolved,
-  Timestamp,
 } from "@local/hash-subgraph";
 import { linkEntityTypeUrl } from "@local/hash-subgraph";
 import {
@@ -245,7 +247,7 @@ describe("Ontology queries", () => {
     const dataTypeId: VersionedUrl =
       "http://localhost:3000/@alice/types/data-type/number/v/1";
 
-    const request: GetDataTypesRequest = {
+    const request: GetDataTypesParams = {
       filter: {
         equal: [
           {
@@ -344,7 +346,7 @@ describe("Ontology queries", () => {
     const propertyTypeId: VersionedUrl =
       "http://localhost:3000/@alice/types/property-type/name/v/1";
 
-    const request: GetPropertyTypesRequest = {
+    const request: GetPropertyTypesParams = {
       filter: {
         equal: [
           {
@@ -465,7 +467,7 @@ it("archives/unarchives entity types", async () => {
   const entityTypeId: VersionedUrl =
     "http://localhost:3000/@alice/types/entity-type/person/v/1";
 
-  const request: GetEntityTypesRequest = {
+  const request: GetEntityTypesParams = {
     filter: {
       equal: [
         {

@@ -5,7 +5,7 @@ import {
   LinkTypeIcon,
   SelectorAutocomplete,
 } from "@hashintel/design-system";
-import type { EntityTypeWithMetadata } from "@local/hash-subgraph";
+import type { EntityTypeWithMetadata } from "@local/hash-graph-types/ontology";
 import type { BoxProps } from "@mui/material";
 import { useMemo, useRef, useState } from "react";
 
@@ -107,7 +107,11 @@ export const EntityTypeSelector = <Multiple extends boolean = false>({
         title,
         description,
       })}
-      inputPlaceholder="Search for an entity type"
+      inputPlaceholder={
+        !value || (Array.isArray(value) && value.length === 0)
+          ? `Search for ${multiple ? "entity types" : "an entity type"}`
+          : undefined
+      }
       open={open}
       onOpen={() => setOpen(true)}
       onClose={(_, reason) => {

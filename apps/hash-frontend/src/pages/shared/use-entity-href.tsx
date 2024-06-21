@@ -1,5 +1,5 @@
+import type { Entity } from "@local/hash-graph-sdk/entity";
 import { generateEntityPath } from "@local/hash-isomorphic-utils/frontend-paths";
-import type { Entity } from "@local/hash-subgraph";
 import { useMemo } from "react";
 
 import { useGetOwnerForEntity } from "../../components/hooks/use-get-owner-for-entity";
@@ -8,7 +8,7 @@ export const useEntityHref = (entity: Entity, includeDraftId: boolean) => {
   const getOwnerForEntity = useGetOwnerForEntity();
 
   return useMemo(() => {
-    const { shortname } = getOwnerForEntity(entity);
+    const { shortname } = getOwnerForEntity({ entity });
 
     return generateEntityPath({
       shortname,

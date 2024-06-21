@@ -1,4 +1,5 @@
 import type { VersionedUrl } from "@blockprotocol/type-system";
+import type { EntityId } from "@local/hash-graph-types/entity";
 import { isInferenceModelName } from "@local/hash-isomorphic-utils/ai-inference-types";
 import {
   getSimplifiedActionInputs,
@@ -6,7 +7,6 @@ import {
 } from "@local/hash-isomorphic-utils/flows/action-definitions";
 import type { ProposedEntity } from "@local/hash-isomorphic-utils/flows/types";
 import { generateUuid } from "@local/hash-isomorphic-utils/generate-uuid";
-import type { EntityId, OwnedById } from "@local/hash-subgraph";
 import { StatusCode } from "@local/status";
 
 import { getAiAssistantAccountIdActivity } from "../get-ai-assistant-account-id-activity";
@@ -18,8 +18,9 @@ import type {
 import { inferEntitiesFromWebPageActivity } from "../infer-entities-from-web-page-activity";
 import { getFlowContext } from "../shared/get-flow-context";
 import { graphApiClient } from "../shared/graph-api-client";
+import { inferenceModelAliasToSpecificModel } from "../shared/inference-model-alias-to-llm-model";
 import { mapActionInputEntitiesToEntities } from "../shared/map-action-input-entities-to-entities";
-import { modelAliasToSpecificModel } from "../shared/openai-client";
+import { isPermittedOpenAiModel } from "../shared/openai-client";
 import type { FlowActionActivity } from "./types";
 
 export const inferEntitiesFromContentAction: FlowActionActivity = async ({
@@ -28,7 +29,7 @@ export const inferEntitiesFromContentAction: FlowActionActivity = async ({
   const {
     content,
     entityTypeIds,
-    model,
+    model: modelAlias,
     relevantEntitiesPrompt,
     existingEntities: inputExistingEntities,
   } = getSimplifiedActionInputs({
@@ -40,15 +41,11 @@ export const inferEntitiesFromContentAction: FlowActionActivity = async ({
     ? mapActionInputEntitiesToEntities({ inputEntities: inputExistingEntities })
     : [];
 
-  const { userAuthentication } = await getFlowContext();
+  const { userAuthentication, webId } = await getFlowContext();
 
   const aiAssistantAccountId = await getAiAssistantAccountIdActivity({
     authentication: userAuthentication,
-    /**
-     * @todo: we probably want this customizable by an input for the action, or
-     * as an additional parameter for the activity.
-     */
-    grantCreatePermissionForWeb: userAuthentication.actorId as OwnedById,
+    grantCreatePermissionForWeb: webId,
     graphApiClient,
   });
 
@@ -92,10 +89,20 @@ export const inferEntitiesFromContentAction: FlowActionActivity = async ({
     usage: [],
   };
 
-  if (!isInferenceModelName(model)) {
+  if (!isInferenceModelName(modelAlias)) {
     return {
       code: StatusCode.InvalidArgument,
-      message: `Invalid inference model name: ${model}`,
+      message: `Invalid inference model name: ${modelAlias}`,
+      contents: [],
+    };
+  }
+
+  const model = inferenceModelAliasToSpecificModel[modelAlias];
+
+  if (!isPermittedOpenAiModel(model)) {
+    return {
+      code: StatusCode.InvalidArgument,
+      message: `Model must be an OpenAI model, provided: ${model}`,
       contents: [],
     };
   }
@@ -103,7 +110,7 @@ export const inferEntitiesFromContentAction: FlowActionActivity = async ({
   const status = await inferEntitiesFromWebPageActivity({
     webPage: content,
     relevantEntitiesPrompt,
-    model: modelAliasToSpecificModel[model],
+    model,
     entityTypes,
     inferenceState: webPageInferenceState,
     existingEntities,

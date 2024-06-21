@@ -1,11 +1,9 @@
 mod query;
 mod read;
 
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    iter::once,
-};
+use alloc::borrow::Cow;
+use core::iter::once;
+use std::collections::{HashMap, HashSet};
 
 use authorization::{
     backend::ModifyRelationshipOperation,
@@ -26,7 +24,8 @@ use graph_types::{
             EntityMetadata, EntityProvenance, EntityRecordId, EntityTemporalMetadata, EntityUuid,
             InferredEntityProvenance,
         },
-        Confidence, PropertyMetadataMap, PropertyObject, PropertyPath,
+        Confidence, Property, PropertyMetadataElement, PropertyMetadataObject, PropertyObject,
+        PropertyPath, PropertyWithMetadata,
     },
     ontology::EntityTypeId,
     owned_by_id::OwnedById,
@@ -62,7 +61,7 @@ use crate::{
             query::{
                 rows::{
                     EntityDraftRow, EntityEditionRow, EntityHasLeftEntityRow,
-                    EntityHasRightEntityRow, EntityIdRow, EntityIsOfTypeRow, EntityPropertyRow,
+                    EntityHasRightEntityRow, EntityIdRow, EntityIsOfTypeRow,
                     EntityTemporalMetadataRow,
                 },
                 InsertStatementBuilder, ReferenceTable, Table,
@@ -143,6 +142,9 @@ where
             for (entity_vertex_id, graph_resolve_depths, traversal_interval) in
                 entity_queue.drain(..)
             {
+                let span = tracing::trace_span!("collect_edges", ?entity_vertex_id);
+                let _s = span.enter();
+
                 if let Some(new_graph_resolve_depths) = graph_resolve_depths
                     .decrement_depth_for_edge(SharedEdgeKind::IsOfType, EdgeDirection::Outgoing)
                 {
@@ -182,6 +184,9 @@ where
             }
 
             if let Some(traversal_data) = shared_edges_to_traverse.take() {
+                let span = tracing::trace_span!("post_filter_entity_types");
+                let _s = span.enter();
+
                 entity_type_queue.extend(
                     Self::filter_entity_types_by_permission(
                         self.read_shared_edges(&traversal_data, Some(0)).await?,
@@ -293,7 +298,6 @@ where
                 "
                     DELETE FROM entity_has_left_entity;
                     DELETE FROM entity_has_right_entity;
-                    DELETE FROM entity_property;
                     DELETE FROM entity_is_of_type;
                     DELETE FROM entity_temporal_metadata;
                     DELETE FROM entity_editions;
@@ -328,6 +332,9 @@ where
             .map_ok(|entity| entity.metadata.record_id.entity_id)
             .try_collect::<Vec<_>>()
             .await?;
+
+            let span = tracing::trace_span!("post_filter_entities");
+            let _s = span.enter();
 
             let (permissions, zookie) = self
                 .authorization_api
@@ -483,7 +490,6 @@ where
         let mut entity_draft_rows = Vec::new();
         let mut entity_edition_rows = Vec::with_capacity(params.len());
         let mut entity_temporal_metadata_rows = Vec::with_capacity(params.len());
-        let mut entity_property_rows = Vec::new();
         let mut entity_is_of_type_rows = Vec::with_capacity(params.len());
         let mut entity_has_left_entity_rows = Vec::new();
         let mut entity_has_right_entity_rows = Vec::new();
@@ -491,6 +497,32 @@ where
         let mut entities = Vec::with_capacity(params.len());
 
         for params in params {
+            let (properties, property_metadata) = if let (
+                Property::Object(properties),
+                PropertyMetadataElement::Object {
+                    value: object_metadata,
+                    metadata,
+                },
+            ) = PropertyWithMetadata::from_parts(
+                Property::Object(params.properties),
+                Some(PropertyMetadataElement::from(params.property_metadata)),
+            )
+            .change_context(InsertionError)?
+            .into_parts()
+            {
+                (
+                    properties,
+                    PropertyMetadataObject {
+                        value: object_metadata,
+                        metadata,
+                    },
+                )
+            } else {
+                return Err(Report::new(InsertionError)
+                    .attach(StatusCode::InvalidArgument)
+                    .attach_printable("Properties must be an object"));
+            };
+
             let decision_time = params
                 .decision_time
                 .map_or_else(|| transaction_time.cast(), Timestamp::remove_nanosecond);
@@ -542,10 +574,11 @@ where
             let entity_edition_id = EntityEditionId::new(Uuid::new_v4());
             entity_edition_rows.push(EntityEditionRow {
                 entity_edition_id,
-                properties: params.properties.clone(),
+                properties: properties.clone(),
                 archived: false,
                 confidence: params.confidence,
                 provenance: entity_provenance.edition.clone(),
+                property_metadata: property_metadata.clone(),
             });
 
             let temporal_versioning = EntityTemporalMetadata {
@@ -566,15 +599,6 @@ where
                 decision_time: temporal_versioning.decision_time,
                 transaction_time: temporal_versioning.transaction_time,
             });
-
-            for (property_path, metadata) in &params.property_metadata {
-                entity_property_rows.push(EntityPropertyRow {
-                    entity_edition_id,
-                    property_path: property_path.clone(),
-                    confidence: metadata.confidence,
-                    provenance: metadata.provenance.clone(),
-                });
-            }
 
             for entity_type_url in &params.entity_type_ids {
                 let entity_type_id = EntityTypeId::from_url(entity_type_url);
@@ -606,7 +630,7 @@ where
             });
 
             entities.push(Entity {
-                properties: params.properties,
+                properties,
                 link_data,
                 metadata: EntityMetadata {
                     record_id: EntityRecordId {
@@ -618,7 +642,7 @@ where
                     archived: false,
                     provenance: entity_provenance,
                     confidence: params.confidence,
-                    properties: params.property_metadata,
+                    properties: property_metadata,
                 },
             });
 
@@ -722,7 +746,6 @@ where
                 Table::EntityTemporalMetadata,
                 &entity_temporal_metadata_rows,
             ),
-            InsertStatementBuilder::from_rows(Table::EntityProperty, &entity_property_rows),
             InsertStatementBuilder::from_rows(Table::EntityIsOfType, &entity_is_of_type_rows),
             InsertStatementBuilder::from_rows(
                 Table::EntityHasLeftEntity,
@@ -784,11 +807,7 @@ where
             .change_context(InsertionError)
             .attach(StatusCode::InvalidArgument)?;
 
-        let commit_result = {
-            let span = tracing::trace_span!("committing entity");
-            let _enter = span.enter();
-            transaction.commit().await.change_context(InsertionError)
-        };
+        let commit_result = transaction.commit().await.change_context(InsertionError);
         if let Err(mut error) = commit_result {
             if let Err(auth_error) = self
                 .authorization_api
@@ -1011,6 +1030,9 @@ where
             temporal_axes,
         );
 
+        let span = tracing::trace_span!("construct_subgraph");
+        let _s = span.enter();
+
         subgraph.roots.extend(
             root_entities
                 .iter()
@@ -1073,6 +1095,9 @@ where
         .map_ok(|entity| entity.metadata.record_id.entity_id)
         .try_collect::<Vec<_>>()
         .await?;
+
+        let span = tracing::trace_span!("post_filter_entities");
+        let _s = span.enter();
 
         let permitted_ids = self
             .authorization_api
@@ -1141,7 +1166,7 @@ where
         &mut self,
         actor_id: AccountId,
         mut params: PatchEntityParams,
-    ) -> Result<EntityMetadata, UpdateError> {
+    ) -> Result<Entity, UpdateError> {
         let transaction_time = Timestamp::now().remove_nanosecond();
         let decision_time = params
             .decision_time
@@ -1221,7 +1246,7 @@ where
         let previous_properties = previous_entity.properties.clone();
         let previous_property_metadata = previous_entity.metadata.properties.clone();
         previous_entity
-            .patch(&params.properties)
+            .patch(params.properties)
             .change_context(UpdateError)?;
         let properties = previous_entity.properties;
         let property_metadata = previous_entity.metadata.properties;
@@ -1294,14 +1319,18 @@ where
             && params.confidence == previous_entity.metadata.confidence
         {
             // No changes were made to the entity.
-            return Ok(EntityMetadata {
-                record_id: previous_entity.metadata.record_id,
-                temporal_versioning: previous_entity.metadata.temporal_versioning,
-                entity_type_ids,
-                provenance: previous_entity.metadata.provenance,
-                archived,
-                confidence: previous_entity.metadata.confidence,
-                properties: property_metadata,
+            return Ok(Entity {
+                properties: previous_properties,
+                link_data: previous_entity.link_data,
+                metadata: EntityMetadata {
+                    record_id: previous_entity.metadata.record_id,
+                    temporal_versioning: previous_entity.metadata.temporal_versioning,
+                    entity_type_ids,
+                    provenance: previous_entity.metadata.provenance,
+                    archived,
+                    confidence: previous_entity.metadata.confidence,
+                    properties: property_metadata,
+                },
             });
         }
 
@@ -1319,12 +1348,8 @@ where
                 &properties,
                 params.confidence,
                 &edition_provenance,
+                &property_metadata,
             )
-            .await
-            .change_context(UpdateError)?;
-
-        transaction
-            .insert_properties(edition_id, &property_metadata)
             .await
             .change_context(UpdateError)?;
 
@@ -1470,20 +1495,18 @@ where
             properties: property_metadata,
             archived,
         };
+        let entity = Entity {
+            properties,
+            link_data,
+            metadata: entity_metadata.clone(),
+        };
         if let Some(temporal_client) = &self.temporal_client {
             temporal_client
-                .start_update_entity_embeddings_workflow(
-                    actor_id,
-                    &[Entity {
-                        properties,
-                        link_data,
-                        metadata: entity_metadata.clone(),
-                    }],
-                )
+                .start_update_entity_embeddings_workflow(actor_id, &[entity.clone()])
                 .await
                 .change_context(UpdateError)?;
         }
-        Ok(entity_metadata)
+        Ok(entity)
     }
 
     #[tracing::instrument(level = "info", skip(self, params))]
@@ -1629,6 +1652,7 @@ where
         properties: &PropertyObject,
         confidence: Option<Confidence>,
         provenance: &EntityEditionProvenance,
+        metadata: &PropertyMetadataObject,
     ) -> Result<(EntityEditionId, ClosedEntityType), InsertionError> {
         let edition_id: EntityEditionId = self
             .as_client()
@@ -1639,11 +1663,12 @@ where
                         archived,
                         properties,
                         confidence,
-                        provenance
-                    ) VALUES (gen_random_uuid(), $1, $2, $3, $4)
+                        provenance,
+                        property_metadata
+                    ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
                     RETURNING entity_edition_id;
                 ",
-                &[&archived, &properties, &confidence, provenance],
+                &[&archived, &properties, &confidence, provenance, metadata],
             )
             .await
             .change_context(InsertionError)?
@@ -1681,49 +1706,6 @@ where
             .change_context(InsertionError)?;
 
         Ok((edition_id, entity_type))
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn insert_properties(
-        &self,
-        entity_edition_id: EntityEditionId,
-        metadata: &PropertyMetadataMap<'_>,
-    ) -> Result<(), InsertionError> {
-        let mut property_paths = Vec::with_capacity(metadata.len());
-        let mut confidences = Vec::with_capacity(property_paths.len());
-        let mut provenances = Vec::with_capacity(property_paths.len());
-
-        for (property_path, metadata) in metadata {
-            property_paths.push(property_path);
-            confidences.push(metadata.confidence);
-            provenances.push(&metadata.provenance);
-        }
-
-        self.as_client()
-            .query(
-                "
-                    INSERT INTO entity_property (
-                        entity_edition_id,
-                        property_path,
-                        confidence,
-                        provenance
-                    ) VALUES (
-                        $1,
-                        UNNEST($2::TEXT[]),
-                        UNNEST($3::DOUBLE PRECISION[]),
-                        UNNEST($4::JSONB[])
-                    );
-                ",
-                &[
-                    &entity_edition_id,
-                    &property_paths,
-                    &confidences,
-                    &provenances,
-                ],
-            )
-            .await
-            .change_context(InsertionError)?;
-        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

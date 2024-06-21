@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use core::str::FromStr;
 
 use authorization::AuthorizationApi;
 use graph::{
@@ -15,7 +15,7 @@ use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     knowledge::{
         entity::{Entity, ProvidedEntityEditionProvenance},
-        PropertyMetadataMap, PropertyObject,
+        PropertyMetadataObject, PropertyObject,
     },
     owned_by_id::OwnedById,
 };
@@ -81,7 +81,7 @@ async fn empty_entity() {
                 entity_type_ids: vec![],
                 properties: PropertyObject::empty(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: false,
                 relationships: [],
@@ -108,7 +108,7 @@ async fn initial_person() {
                 entity_type_ids: vec![person_entity_type_id()],
                 properties: alice(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: false,
                 relationships: [],
@@ -151,7 +151,7 @@ async fn initial_person() {
         }]
     );
 
-    let updated_entity_metadata = api
+    let updated_entity = api
         .patch_entity(
             api.account_id,
             PatchEntityParams {
@@ -169,7 +169,7 @@ async fn initial_person() {
         .expect("could not create entity");
 
     assert_eq!(
-        updated_entity_metadata.entity_type_ids,
+        updated_entity.metadata.entity_type_ids,
         [person_entity_type_id(), org_entity_type_id()]
     );
 
@@ -221,7 +221,7 @@ async fn initial_person() {
     assert_eq!(
         updated_person_entities,
         [Entity {
-            metadata: updated_entity_metadata,
+            metadata: updated_entity.metadata,
             properties: alice(),
             link_data: None
         }]
@@ -244,7 +244,7 @@ async fn create_multi() {
                 entity_type_ids: vec![person_entity_type_id(), org_entity_type_id()],
                 properties: alice(),
                 confidence: None,
-                property_metadata: PropertyMetadataMap::default(),
+                property_metadata: PropertyMetadataObject::default(),
                 link_data: None,
                 draft: false,
                 relationships: [],
@@ -313,7 +313,7 @@ async fn create_multi() {
         }]
     );
 
-    let updated_entity_metadata = api
+    let updated_entity = api
         .patch_entity(
             api.account_id,
             PatchEntityParams {
@@ -331,7 +331,7 @@ async fn create_multi() {
         .expect("could not create entity");
 
     assert_eq!(
-        updated_entity_metadata.entity_type_ids,
+        updated_entity.metadata.entity_type_ids,
         [person_entity_type_id()]
     );
 
@@ -360,7 +360,7 @@ async fn create_multi() {
     assert_eq!(
         updated_person_entities,
         [Entity {
-            metadata: updated_entity_metadata,
+            metadata: updated_entity.metadata,
             properties: alice(),
             link_data: None
         }]
