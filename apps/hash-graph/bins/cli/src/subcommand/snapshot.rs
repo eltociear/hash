@@ -1,17 +1,24 @@
 use authorization::{
     backend::{SpiceDbOpenApi, ZanzibarBackend},
     zanzibar::ZanzibarClient,
-    AuthorizationApi,
+    AuthorizationApi, NoAuthorization,
 };
 use clap::Parser;
 use error_stack::{Result, ResultExt};
 use graph::{
     snapshot::{SnapshotEntry, SnapshotStore},
-    store::{DatabaseConnectionInfo, DatabasePoolConfig, PostgresStorePool, StorePool},
+    store::{
+        ontology::GetEntityTypesParams, query::Filter, DatabaseConnectionInfo, DatabasePoolConfig,
+        EntityTypeStore, PostgresStorePool, StorePool,
+    },
+    subgraph::identifier::EntityTypeVertexId,
 };
+use graph_types::account::AccountId;
+use serde_json::json;
 use tokio::io;
 use tokio_postgres::NoTls;
 use tokio_util::codec::{FramedRead, FramedWrite};
+use uuid::Uuid;
 
 use crate::error::GraphError;
 
@@ -29,6 +36,7 @@ pub struct SnapshotRestoreArgs {
 pub enum SnapshotCommand {
     Dump(SnapshotDumpArgs),
     Restore(SnapshotRestoreArgs),
+    Reinsert,
 }
 
 #[derive(Debug, Parser)]
@@ -89,7 +97,7 @@ pub async fn snapshot(args: SnapshotArgs) -> Result<(), GraphError> {
                     io::BufWriter::new(io::stdout()),
                     codec::bytes::JsonLinesEncoder::default(),
                 ),
-                &zanzibar_client,
+                &NoAuthorization,
                 10_000,
             )
             .change_context(GraphError)
@@ -99,7 +107,7 @@ pub async fn snapshot(args: SnapshotArgs) -> Result<(), GraphError> {
         }
         SnapshotCommand::Restore(args) => {
             SnapshotStore::new(
-                pool.acquire(zanzibar_client, None)
+                pool.acquire(NoAuthorization, None)
                     .await
                     .change_context(GraphError)
                     .map_err(|report| {
@@ -120,6 +128,46 @@ pub async fn snapshot(args: SnapshotArgs) -> Result<(), GraphError> {
             .attach_printable("Failed to restore snapshot")?;
 
             tracing::info!("Snapshot restored successfully");
+        }
+        SnapshotCommand::Reinsert => {
+            let store = pool
+                .acquire(NoAuthorization, None)
+                .await
+                .change_context(GraphError)
+                .map_err(|report| {
+                    tracing::error!(error = ?report, "Failed to acquire database connection");
+                    report
+                })?;
+            let entity_types = store
+                .get_entity_types(
+                    AccountId::new(Uuid::new_v4()),
+                    GetEntityTypesParams {
+                        filter: Filter::All(vec![]),
+                        temporal_axes: serde_json::from_value(json!({
+                          "pinned": {
+                            "axis": "transactionTime",
+                            "timestamp": null
+                          },
+                          "variable": {
+                            "axis": "decisionTime",
+                            "interval": {
+                              "start": null,
+                              "end": null
+                            }
+                          }
+                        }))
+                        .expect("Failed to parse temporal axes"),
+                        include_drafts: true,
+                        after: None,
+                        limit: None,
+                        include_count: false,
+                    },
+                )
+                .await
+                .change_context(GraphError)?
+                .entity_types;
+            dbg!(entity_types.len());
+            println!("Reinserting snapshot entries");
         }
     }
 
