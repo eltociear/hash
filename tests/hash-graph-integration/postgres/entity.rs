@@ -15,15 +15,15 @@ use graph::{
 use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     knowledge::{
-        entity::ProvidedEntityEditionProvenance, Property, PropertyObject, PropertyPatchOperation,
-        PropertyPath, PropertyWithMetadata, PropertyWithMetadataObject,
+        Property, PropertyObject, PropertyPatchOperation, PropertyPath, PropertyWithMetadata,
+        PropertyWithMetadataObject,
     },
     owned_by_id::OwnedById,
 };
 use temporal_versioning::{ClosedTemporalBound, LimitedTemporalBound, TemporalBound};
 use type_system::url::{BaseUrl, OntologyTypeVersion, VersionedUrl};
 
-use crate::DatabaseTestWrapper;
+use crate::{entity_provenance, DatabaseTestWrapper};
 
 #[tokio::test]
 async fn insert() {
@@ -72,7 +72,7 @@ async fn insert() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -143,7 +143,7 @@ async fn query() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -216,7 +216,7 @@ async fn update() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -240,7 +240,7 @@ async fn update() {
                 draft: None,
                 decision_time: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await

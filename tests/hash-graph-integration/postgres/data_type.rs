@@ -9,15 +9,12 @@ use graph::{
         PinnedTemporalAxisUnresolved, QueryTemporalAxesUnresolved, VariableTemporalAxisUnresolved,
     },
 };
-use graph_types::{
-    ontology::{OntologyTypeClassificationMetadata, ProvidedOntologyEditionProvenance},
-    owned_by_id::OwnedById,
-};
+use graph_types::{ontology::OntologyTypeClassificationMetadata, owned_by_id::OwnedById};
 use temporal_versioning::TemporalBound;
 use time::OffsetDateTime;
 use type_system::DataType;
 
-use crate::{data_type_relationships, DatabaseTestWrapper};
+use crate::{data_type_relationships, ontology_provenance, DatabaseTestWrapper};
 
 #[tokio::test]
 async fn insert() {
@@ -39,7 +36,7 @@ async fn insert() {
             },
             relationships: data_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -66,7 +63,7 @@ async fn query() {
             },
             relationships: data_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -125,7 +122,7 @@ async fn update() {
             },
             relationships: data_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -136,7 +133,7 @@ async fn update() {
         UpdateDataTypesParams {
             schema: object_dt_v2.clone(),
             relationships: data_type_relationships(),
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -217,7 +214,7 @@ async fn insert_same_base_url() {
             },
             relationships: data_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -233,7 +230,7 @@ async fn insert_same_base_url() {
                 },
                 relationships: data_type_relationships(),
                 conflict_behavior: ConflictBehavior::Fail,
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await
@@ -253,7 +250,7 @@ async fn insert_same_base_url() {
                 },
                 relationships: data_type_relationships(),
                 conflict_behavior: ConflictBehavior::Fail,
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await
@@ -273,7 +270,7 @@ async fn insert_same_base_url() {
                 },
                 relationships: data_type_relationships(),
                 conflict_behavior: ConflictBehavior::Fail,
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await
@@ -293,7 +290,7 @@ async fn insert_same_base_url() {
                 },
                 relationships: data_type_relationships(),
                 conflict_behavior: ConflictBehavior::Fail,
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await
@@ -324,7 +321,7 @@ async fn wrong_update_order() {
             UpdateDataTypesParams {
                 schema: object_dt_v1.clone(),
                 relationships: data_type_relationships(),
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await
@@ -343,7 +340,7 @@ async fn wrong_update_order() {
             },
             relationships: data_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -355,7 +352,7 @@ async fn wrong_update_order() {
             UpdateDataTypesParams {
                 schema: object_dt_v1.clone(),
                 relationships: data_type_relationships(),
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await
@@ -370,7 +367,7 @@ async fn wrong_update_order() {
         UpdateDataTypesParams {
             schema: object_dt_v2.clone(),
             relationships: data_type_relationships(),
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -382,7 +379,7 @@ async fn wrong_update_order() {
             UpdateDataTypesParams {
                 schema: object_dt_v2.clone(),
                 relationships: data_type_relationships(),
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await
@@ -416,7 +413,7 @@ async fn update_external_with_owned() {
             },
             relationships: data_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -428,7 +425,7 @@ async fn update_external_with_owned() {
             UpdateDataTypesParams {
                 schema: object_dt_v2.clone(),
                 relationships: data_type_relationships(),
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await
@@ -447,7 +444,7 @@ async fn update_external_with_owned() {
             },
             relationships: data_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -459,7 +456,7 @@ async fn update_external_with_owned() {
             UpdateDataTypesParams {
                 schema: object_dt_v2,
                 relationships: data_type_relationships(),
-                provenance: ProvidedOntologyEditionProvenance::default(),
+                provenance: ontology_provenance(),
             },
         )
         .await

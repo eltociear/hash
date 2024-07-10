@@ -5,7 +5,7 @@ use graph::store::{knowledge::CreateEntityParams, EntityStore};
 use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     knowledge::{
-        entity::{EntityId, EntityUuid, ProvidedEntityEditionProvenance},
+        entity::{EntityId, EntityUuid},
         link::LinkData,
         PropertyObject, PropertyProvenance, PropertyWithMetadataObject,
     },
@@ -14,7 +14,7 @@ use graph_types::{
 use type_system::url::VersionedUrl;
 use uuid::Uuid;
 
-use crate::DatabaseTestWrapper;
+use crate::{entity_provenance, DatabaseTestWrapper};
 
 #[tokio::test]
 #[expect(clippy::too_many_lines)]
@@ -61,7 +61,7 @@ async fn insert() {
         link_data: None,
         draft: false,
         relationships: [],
-        provenance: ProvidedEntityEditionProvenance::default(),
+        provenance: entity_provenance(),
     };
 
     let bob_id = EntityUuid::new(Uuid::new_v4());
@@ -82,7 +82,7 @@ async fn insert() {
         link_data: None,
         draft: false,
         relationships: [],
-        provenance: ProvidedEntityEditionProvenance::default(),
+        provenance: entity_provenance(),
     };
 
     let friendship_entity = CreateEntityParams {
@@ -114,7 +114,7 @@ async fn insert() {
         }),
         draft: false,
         relationships: [],
-        provenance: ProvidedEntityEditionProvenance::default(),
+        provenance: entity_provenance(),
     };
 
     let entities = api

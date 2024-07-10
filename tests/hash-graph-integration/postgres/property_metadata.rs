@@ -21,7 +21,7 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use type_system::url::{BaseUrl, VersionedUrl};
 
-use crate::{DatabaseApi, DatabaseTestWrapper};
+use crate::{entity_provenance, DatabaseApi, DatabaseTestWrapper};
 
 async fn seed<A: AuthorizationApi>(
     database: &mut DatabaseTestWrapper<A>,
@@ -171,7 +171,7 @@ async fn initial_metadata() {
                 link_data: None,
                 draft: true,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -271,7 +271,7 @@ async fn no_initial_metadata() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -306,7 +306,7 @@ async fn no_initial_metadata() {
                 draft: None,
                 decision_time: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -325,7 +325,7 @@ async fn no_initial_metadata() {
                 draft: None,
                 decision_time: None,
                 confidence: Confidence::new(0.5),
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -370,7 +370,7 @@ async fn no_initial_metadata() {
                 draft: None,
                 decision_time: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -453,7 +453,7 @@ async fn properties_add() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -482,7 +482,7 @@ async fn properties_add() {
                 draft: None,
                 archived: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -538,7 +538,7 @@ async fn properties_remove() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -588,7 +588,7 @@ async fn properties_remove() {
                 draft: None,
                 archived: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -645,7 +645,7 @@ async fn properties_remove() {
                 draft: None,
                 archived: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await

@@ -9,14 +9,11 @@ use graph::{
     },
 };
 use graph_test_data::{data_type, entity_type, property_type};
-use graph_types::{
-    ontology::{OntologyTypeClassificationMetadata, ProvidedOntologyEditionProvenance},
-    owned_by_id::OwnedById,
-};
+use graph_types::{ontology::OntologyTypeClassificationMetadata, owned_by_id::OwnedById};
 use temporal_versioning::TemporalBound;
 use type_system::EntityType;
 
-use crate::{entity_type_relationships, DatabaseTestWrapper};
+use crate::{entity_type_relationships, ontology_provenance, DatabaseTestWrapper};
 
 #[tokio::test]
 async fn insert() {
@@ -55,7 +52,7 @@ async fn insert() {
             icon: None,
             relationships: entity_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -84,7 +81,7 @@ async fn query() {
             icon: None,
             relationships: entity_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -163,7 +160,7 @@ async fn update() {
             icon: None,
             relationships: entity_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -176,7 +173,7 @@ async fn update() {
             label_property: None,
             icon: None,
             relationships: entity_type_relationships(),
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await

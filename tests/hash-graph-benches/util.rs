@@ -24,6 +24,7 @@ use graph::{
 };
 use graph_types::{
     account::AccountId,
+    knowledge::entity::{ActorType, OriginProvenance, OriginType, ProvidedEntityEditionProvenance},
     ontology::{OntologyTypeClassificationMetadata, ProvidedOntologyEditionProvenance},
     owned_by_id::OwnedById,
 };
@@ -71,6 +72,54 @@ pub fn setup_subscriber(
 
     let default_guard = tracing::subscriber::set_default(subscriber);
     Guard(default_guard, file_guard)
+}
+
+/// Creates a provenance entry for ontology types which can be used in benches.
+///
+/// # Panics
+///
+/// Panics if the version of the package is not a valid semantic version.
+#[must_use]
+pub fn ontology_provenance() -> ProvidedOntologyEditionProvenance {
+    ProvidedOntologyEditionProvenance {
+        actor_type: ActorType::Machine,
+        origin: OriginProvenance {
+            ty: OriginType::Api,
+            id: Some(env!("CARGO_PKG_NAME").to_owned()),
+            version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            semantic_version: Some(env!("CARGO_PKG_VERSION").parse().expect("invalid version")),
+            environment: None,
+            device_id: None,
+            session_id: None,
+            api_key_public_id: None,
+            user_agent: None,
+        },
+        sources: Vec::new(),
+    }
+}
+
+/// Creates a provenance entry for entities which can be used in benches.
+///
+/// # Panics
+///
+/// Panics if the version of the package is not a valid semantic version.
+#[must_use]
+pub fn entity_provenance() -> ProvidedEntityEditionProvenance {
+    ProvidedEntityEditionProvenance {
+        actor_type: ActorType::Machine,
+        origin: OriginProvenance {
+            ty: OriginType::Api,
+            id: Some(env!("CARGO_PKG_NAME").to_owned()),
+            version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            semantic_version: Some(env!("CARGO_PKG_VERSION").parse().expect("invalid version")),
+            environment: None,
+            device_id: None,
+            session_id: None,
+            api_key_public_id: None,
+            user_agent: None,
+        },
+        sources: Vec::new(),
+    }
 }
 
 impl<A> StoreWrapper<A>
@@ -307,7 +356,7 @@ pub async fn seed<D, P, E, C, A>(
                         level: 0,
                     }],
                     conflict_behavior: ConflictBehavior::Fail,
-                    provenance: ProvidedOntologyEditionProvenance::default(),
+                    provenance: ontology_provenance(),
                 },
             )
             .await
@@ -324,7 +373,7 @@ pub async fn seed<D, P, E, C, A>(
                                     subject: DataTypeViewerSubject::Public,
                                     level: 0,
                                 }],
-                                provenance: ProvidedOntologyEditionProvenance::default(),
+                                provenance: ontology_provenance(),
                             },
                         )
                         .await
@@ -353,7 +402,7 @@ pub async fn seed<D, P, E, C, A>(
                         level: 0,
                     }],
                     conflict_behavior: ConflictBehavior::Fail,
-                    provenance: ProvidedOntologyEditionProvenance::default(),
+                    provenance: ontology_provenance(),
                 },
             )
             .await
@@ -370,7 +419,7 @@ pub async fn seed<D, P, E, C, A>(
                                     subject: PropertyTypeViewerSubject::Public,
                                     level: 0,
                                 }],
-                                provenance: ProvidedOntologyEditionProvenance::default(),
+                                provenance: ontology_provenance(),
                             },
                         )
                         .await
@@ -401,7 +450,7 @@ pub async fn seed<D, P, E, C, A>(
                         level: 0,
                     }],
                     conflict_behavior: ConflictBehavior::Fail,
-                    provenance: ProvidedOntologyEditionProvenance::default(),
+                    provenance: ontology_provenance(),
                 },
             )
             .await
@@ -426,7 +475,7 @@ pub async fn seed<D, P, E, C, A>(
                                         level: 0,
                                     },
                                 ],
-                                provenance: ProvidedOntologyEditionProvenance::default(),
+                                provenance: ontology_provenance(),
                             },
                         )
                         .await

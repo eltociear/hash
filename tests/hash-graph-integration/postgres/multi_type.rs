@@ -14,16 +14,13 @@ use graph::{
 };
 use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
-    knowledge::{
-        entity::{Entity, ProvidedEntityEditionProvenance},
-        PropertyObject, PropertyWithMetadataObject,
-    },
+    knowledge::{entity::Entity, PropertyObject, PropertyWithMetadataObject},
     owned_by_id::OwnedById,
 };
 use pretty_assertions::assert_eq;
 use type_system::url::VersionedUrl;
 
-use crate::{DatabaseApi, DatabaseTestWrapper};
+use crate::{entity_provenance, DatabaseApi, DatabaseTestWrapper};
 
 async fn seed<A: AuthorizationApi>(
     database: &mut DatabaseTestWrapper<A>,
@@ -86,7 +83,7 @@ async fn empty_entity() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -113,7 +110,7 @@ async fn initial_person() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -161,7 +158,7 @@ async fn initial_person() {
                 draft: None,
                 archived: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -255,7 +252,7 @@ async fn create_multi() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -332,7 +329,7 @@ async fn create_multi() {
                 draft: None,
                 archived: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await

@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use core::mem;
+use core::{mem, str::FromStr};
 use std::collections::HashSet;
 
 use async_trait::async_trait;
@@ -15,7 +15,10 @@ use authorization::{
 use error_stack::{Report, Result, ResultExt};
 use graph_types::{
     account::AccountId,
-    knowledge::entity::{Entity, EntityId},
+    knowledge::entity::{
+        ActorType, Entity, EntityId, Location, OriginProvenance, OriginType, SourceProvenance,
+        SourceType,
+    },
     ontology::{
         DataTypeMetadata, EntityTypeMetadata, OntologyTemporalMetadata, OntologyType,
         OntologyTypeClassificationMetadata, OntologyTypeMetadata, OntologyTypeReference,
@@ -27,6 +30,7 @@ use graph_types::{
 use tarpc::context;
 use temporal_client::TemporalClient;
 use temporal_versioning::{DecisionTime, Timestamp, TransactionTime};
+use time::OffsetDateTime;
 use tokio::net::ToSocketAddrs;
 use tokio_serde::formats::Json;
 use type_fetcher::fetcher::{FetchedOntologyType, FetcherClient};
@@ -108,6 +112,27 @@ where
             connection_info: None,
         }
     }
+
+    fn create_ontology_provenance() -> ProvidedOntologyEditionProvenance {
+        ProvidedOntologyEditionProvenance {
+            actor_type: ActorType::Machine,
+            origin: OriginProvenance {
+                ty: OriginType::Api,
+                id: Some(env!("CARGO_PKG_NAME").to_owned()),
+                version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+                semantic_version: Some(
+                    semver::Version::from_str(env!("CARGO_PKG_VERSION"))
+                        .expect("Invalid package version"),
+                ),
+                environment: None,
+                device_id: None,
+                session_id: None,
+                api_key_public_id: None,
+                user_agent: None,
+            },
+            sources: Vec::new(),
+        }
+    }
 }
 
 #[async_trait]
@@ -130,6 +155,7 @@ where
                 .acquire(authorization_api, temporal_client)
                 .await?,
             connection_info: self.connection_info.clone(),
+            provenance: Self::create_ontology_provenance(),
         })
     }
 
@@ -144,6 +170,7 @@ where
                 .acquire_owned(authorization_api, temporal_client)
                 .await?,
             connection_info: self.connection_info.clone(),
+            provenance: Self::create_ontology_provenance(),
         })
     }
 }
@@ -151,6 +178,7 @@ where
 pub struct FetchingStore<S, A> {
     store: S,
     connection_info: Option<TypeFetcherConnectionInfo<A>>,
+    provenance: ProvidedOntologyEditionProvenance,
 }
 
 const DATA_TYPE_RELATIONSHIPS: [DataTypeRelationAndSubject; 1] =
@@ -179,6 +207,26 @@ where
     S: Sync,
     A: ToSocketAddrs + Send + Sync,
 {
+    fn create_provenance_info(
+        mut base_provenance: ProvidedOntologyEditionProvenance,
+        schema_id: &VersionedUrl,
+        loaded_at: Option<OffsetDateTime>,
+    ) -> ProvidedOntologyEditionProvenance {
+        base_provenance.sources = vec![SourceProvenance {
+            ty: SourceType::ExternalType,
+            authors: vec![],
+            location: Some(Location {
+                name: None,
+                uri: Some(schema_id.to_url()),
+                description: None,
+            }),
+            first_published: None,
+            last_updated: None,
+            loaded_at,
+        }];
+        base_provenance
+    }
+
     fn connection_info(&self) -> Result<&TypeFetcherConnectionInfo<A>, StoreError> {
         self.connection_info.as_ref().ok_or_else(|| {
             Report::new(StoreError)
@@ -511,11 +559,15 @@ where
                         .data_types
                         .into_iter()
                         .map(|(schema, metadata)| CreateDataTypeParams {
+                            provenance: Self::create_provenance_info(
+                                self.provenance.clone(),
+                                &schema.id,
+                                metadata.classification.fetched_at(),
+                            ),
                             schema,
                             classification: metadata.classification,
                             relationships: DATA_TYPE_RELATIONSHIPS,
                             conflict_behavior: ConflictBehavior::Skip,
-                            provenance: ProvidedOntologyEditionProvenance::default(),
                         }),
                 )
                 .await?;
@@ -529,11 +581,15 @@ where
                         .property_types
                         .into_iter()
                         .map(|(schema, metadata)| CreatePropertyTypeParams {
+                            provenance: Self::create_provenance_info(
+                                self.provenance.clone(),
+                                &schema.id,
+                                metadata.classification.fetched_at(),
+                            ),
                             schema,
                             classification: metadata.classification,
                             relationships: PROPERTY_TYPE_RELATIONSHIPS,
                             conflict_behavior: ConflictBehavior::Skip,
-                            provenance: ProvidedOntologyEditionProvenance::default(),
                         }),
                 )
                 .await?;
@@ -547,13 +603,17 @@ where
                         .entity_types
                         .into_iter()
                         .map(|(schema, metadata)| CreateEntityTypeParams {
+                            provenance: Self::create_provenance_info(
+                                self.provenance.clone(),
+                                &schema.id,
+                                metadata.classification.fetched_at(),
+                            ),
                             schema,
                             classification: metadata.classification,
                             icon: metadata.icon,
                             label_property: metadata.label_property,
                             relationships: ENTITY_TYPE_RELATIONSHIPS,
                             conflict_behavior: ConflictBehavior::Skip,
-                            provenance: ProvidedOntologyEditionProvenance::default(),
                         }),
                 )
                 .await?;
@@ -597,11 +657,15 @@ where
                             .data_types
                             .into_iter()
                             .map(|(schema, metadata)| CreateDataTypeParams {
+                                provenance: Self::create_provenance_info(
+                                    self.provenance.clone(),
+                                    &schema.id,
+                                    metadata.classification.fetched_at(),
+                                ),
                                 schema,
                                 classification: metadata.classification,
                                 relationships: DATA_TYPE_RELATIONSHIPS,
                                 conflict_behavior: ConflictBehavior::Skip,
-                                provenance: ProvidedOntologyEditionProvenance::default(),
                             }),
                     )
                     .await?
@@ -615,11 +679,15 @@ where
                         actor_id,
                         fetched_ontology_types.property_types.into_iter().map(
                             |(schema, metadata)| CreatePropertyTypeParams {
+                                provenance: Self::create_provenance_info(
+                                    self.provenance.clone(),
+                                    &schema.id,
+                                    metadata.classification.fetched_at(),
+                                ),
                                 schema,
                                 classification: metadata.classification,
                                 relationships: PROPERTY_TYPE_RELATIONSHIPS,
                                 conflict_behavior: ConflictBehavior::Skip,
-                                provenance: ProvidedOntologyEditionProvenance::default(),
                             },
                         ),
                     )
@@ -634,13 +702,17 @@ where
                         actor_id,
                         fetched_ontology_types.entity_types.into_iter().map(
                             |(schema, metadata)| CreateEntityTypeParams {
+                                provenance: Self::create_provenance_info(
+                                    self.provenance.clone(),
+                                    &schema.id,
+                                    metadata.classification.fetched_at(),
+                                ),
                                 schema,
                                 classification: metadata.classification,
                                 icon: metadata.icon,
                                 label_property: metadata.label_property,
                                 relationships: ENTITY_TYPE_RELATIONSHIPS,
                                 conflict_behavior: ConflictBehavior::Skip,
-                                provenance: ProvidedOntologyEditionProvenance::default(),
                             },
                         ),
                     )

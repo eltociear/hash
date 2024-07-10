@@ -21,16 +21,13 @@ use graph::{
 };
 use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
-    knowledge::{
-        entity::ProvidedEntityEditionProvenance, link::LinkData, PropertyObject,
-        PropertyProvenance, PropertyWithMetadataObject,
-    },
+    knowledge::{link::LinkData, PropertyObject, PropertyProvenance, PropertyWithMetadataObject},
     owned_by_id::OwnedById,
 };
 use temporal_versioning::TemporalBound;
 use type_system::url::{BaseUrl, OntologyTypeVersion, VersionedUrl};
 
-use crate::DatabaseTestWrapper;
+use crate::{entity_provenance, DatabaseTestWrapper};
 
 #[tokio::test]
 #[expect(clippy::too_many_lines)]
@@ -83,7 +80,7 @@ async fn insert() {
                 draft: false,
                 relationships: [],
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -103,7 +100,7 @@ async fn insert() {
                 draft: false,
                 relationships: [],
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -137,7 +134,7 @@ async fn insert() {
             draft: false,
             relationships: [],
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await
@@ -303,7 +300,7 @@ async fn get_entity_links() {
                 draft: false,
                 relationships: [],
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -323,7 +320,7 @@ async fn get_entity_links() {
                 draft: false,
                 relationships: [],
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -343,7 +340,7 @@ async fn get_entity_links() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -369,7 +366,7 @@ async fn get_entity_links() {
             draft: false,
             relationships: [],
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await
@@ -395,7 +392,7 @@ async fn get_entity_links() {
             draft: false,
             relationships: [],
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await
@@ -527,7 +524,7 @@ async fn remove_link() {
                 draft: false,
                 relationships: [],
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -547,7 +544,7 @@ async fn remove_link() {
                 draft: false,
                 relationships: [],
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -574,7 +571,7 @@ async fn remove_link() {
                 draft: false,
                 relationships: [],
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -627,7 +624,7 @@ async fn remove_link() {
             entity_type_ids: HashSet::new(),
             properties: vec![],
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await

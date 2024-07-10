@@ -8,9 +8,8 @@ use graph::store::{
 use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     knowledge::{
-        entity::{EntityId, ProvidedEntityEditionProvenance},
-        Property, PropertyObject, PropertyPatchOperation, PropertyPath, PropertyWithMetadata,
-        PropertyWithMetadataObject,
+        entity::EntityId, Property, PropertyObject, PropertyPatchOperation, PropertyPath,
+        PropertyWithMetadata, PropertyWithMetadataObject,
     },
     owned_by_id::OwnedById,
 };
@@ -18,7 +17,7 @@ use pretty_assertions::assert_eq;
 use temporal_versioning::ClosedTemporalBound;
 use type_system::url::{BaseUrl, OntologyTypeVersion, VersionedUrl};
 
-use crate::{DatabaseApi, DatabaseTestWrapper};
+use crate::{entity_provenance, DatabaseApi, DatabaseTestWrapper};
 
 async fn seed<A: AuthorizationApi>(
     database: &mut DatabaseTestWrapper<A>,
@@ -96,7 +95,7 @@ async fn initial_draft() {
                 link_data: None,
                 draft: true,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -136,7 +135,7 @@ async fn initial_draft() {
                 draft: Some(true),
                 decision_time: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -187,7 +186,7 @@ async fn initial_draft() {
                 draft: Some(false),
                 decision_time: None,
                 confidence: None,
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -269,7 +268,7 @@ async fn no_initial_draft() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -314,7 +313,7 @@ async fn no_initial_draft() {
                     draft: Some(true),
                     decision_time: None,
                     confidence: None,
-                    provenance: ProvidedEntityEditionProvenance::default(),
+                    provenance: entity_provenance(),
                 },
             )
             .await
@@ -373,7 +372,7 @@ async fn no_initial_draft() {
                     draft: Some(false),
                     decision_time: None,
                     confidence: None,
-                    provenance: ProvidedEntityEditionProvenance::default(),
+                    provenance: entity_provenance(),
                 },
             )
             .await
@@ -432,7 +431,7 @@ async fn multiple_drafts() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -477,7 +476,7 @@ async fn multiple_drafts() {
                     draft: Some(true),
                     decision_time: None,
                     confidence: None,
-                    provenance: ProvidedEntityEditionProvenance::default(),
+                    provenance: entity_provenance(),
                 },
             )
             .await
@@ -539,7 +538,7 @@ async fn multiple_drafts() {
                     draft: Some(false),
                     decision_time: None,
                     confidence: None,
-                    provenance: ProvidedEntityEditionProvenance::default(),
+                    provenance: entity_provenance(),
                 },
             )
             .await

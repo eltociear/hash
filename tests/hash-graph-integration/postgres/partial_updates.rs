@@ -15,9 +15,8 @@ use graph::{
 use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     knowledge::{
-        entity::ProvidedEntityEditionProvenance, PropertyObject, PropertyPatchOperation,
-        PropertyPathElement, PropertyProvenance, PropertyWithMetadata, PropertyWithMetadataObject,
-        ValueMetadata, ValueWithMetadata,
+        PropertyObject, PropertyPatchOperation, PropertyPathElement, PropertyProvenance,
+        PropertyWithMetadata, PropertyWithMetadataObject, ValueMetadata, ValueWithMetadata,
     },
     owned_by_id::OwnedById,
 };
@@ -25,7 +24,7 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use type_system::url::{BaseUrl, VersionedUrl};
 
-use crate::{DatabaseApi, DatabaseTestWrapper};
+use crate::{entity_provenance, DatabaseApi, DatabaseTestWrapper};
 
 async fn seed<A: AuthorizationApi>(
     database: &mut DatabaseTestWrapper<A>,
@@ -95,7 +94,7 @@ async fn properties_add() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -135,7 +134,7 @@ async fn properties_add() {
             draft: None,
             archived: None,
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await
@@ -190,7 +189,7 @@ async fn properties_remove() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -209,7 +208,7 @@ async fn properties_remove() {
             draft: None,
             archived: None,
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await
@@ -262,7 +261,7 @@ async fn properties_replace() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -289,7 +288,7 @@ async fn properties_replace() {
             draft: None,
             archived: None,
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await
@@ -344,7 +343,7 @@ async fn type_ids() {
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
@@ -361,7 +360,7 @@ async fn type_ids() {
             draft: None,
             archived: None,
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await
@@ -408,7 +407,7 @@ async fn type_ids() {
             draft: None,
             archived: None,
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await
@@ -457,7 +456,7 @@ async fn type_ids() {
             draft: None,
             archived: None,
             confidence: None,
-            provenance: ProvidedEntityEditionProvenance::default(),
+            provenance: entity_provenance(),
         },
     )
     .await

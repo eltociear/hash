@@ -83,6 +83,16 @@ pub enum OntologyTypeClassificationMetadata {
     },
 }
 
+impl OntologyTypeClassificationMetadata {
+    #[must_use]
+    pub const fn fetched_at(&self) -> Option<OffsetDateTime> {
+        match self {
+            Self::External { fetched_at } => Some(*fetched_at),
+            Self::Owned { .. } => None,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[expect(clippy::enum_variant_names)]
 pub enum OntologyTypeReference<'a> {

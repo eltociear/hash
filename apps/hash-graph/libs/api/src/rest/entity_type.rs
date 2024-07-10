@@ -173,10 +173,6 @@ struct CreateEntityTypeRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     icon: Option<String>,
     relationships: Vec<EntityTypeRelationAndSubject>,
-    #[serde(
-        default,
-        skip_serializing_if = "ProvidedOntologyEditionProvenance::is_empty"
-    )]
     provenance: ProvidedOntologyEditionProvenance,
 }
 
@@ -547,10 +543,6 @@ enum LoadExternalEntityTypeRequest {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         icon: Option<String>,
         relationships: Vec<EntityTypeRelationAndSubject>,
-        #[serde(
-            default,
-            skip_serializing_if = "ProvidedOntologyEditionProvenance::is_empty"
-        )]
         provenance: Box<ProvidedOntologyEditionProvenance>,
     },
 }
@@ -824,10 +816,6 @@ struct UpdateEntityTypeRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     icon: Option<String>,
     relationships: Vec<EntityTypeRelationAndSubject>,
-    #[serde(
-        default,
-        skip_serializing_if = "ProvidedOntologyEditionProvenance::is_empty"
-    )]
     provenance: ProvidedOntologyEditionProvenance,
 }
 

@@ -9,14 +9,11 @@ use graph::{
     },
 };
 use graph_test_data::{data_type, property_type};
-use graph_types::{
-    ontology::{OntologyTypeClassificationMetadata, ProvidedOntologyEditionProvenance},
-    owned_by_id::OwnedById,
-};
+use graph_types::{ontology::OntologyTypeClassificationMetadata, owned_by_id::OwnedById};
 use temporal_versioning::TemporalBound;
 use type_system::PropertyType;
 
-use crate::{property_type_relationships, DatabaseTestWrapper};
+use crate::{ontology_provenance, property_type_relationships, DatabaseTestWrapper};
 
 #[tokio::test]
 async fn insert() {
@@ -38,7 +35,7 @@ async fn insert() {
             },
             relationships: property_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -65,7 +62,7 @@ async fn query() {
             },
             relationships: property_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -121,7 +118,7 @@ async fn update() {
             },
             relationships: property_type_relationships(),
             conflict_behavior: ConflictBehavior::Fail,
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await
@@ -132,7 +129,7 @@ async fn update() {
         UpdatePropertyTypesParams {
             schema: user_id_pt_v2.clone(),
             relationships: property_type_relationships(),
-            provenance: ProvidedOntologyEditionProvenance::default(),
+            provenance: ontology_provenance(),
         },
     )
     .await

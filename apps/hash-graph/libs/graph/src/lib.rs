@@ -20,6 +20,7 @@
 )]
 
 extern crate alloc;
+extern crate core;
 
 use core::fmt;
 use std::path::{Path, PathBuf};

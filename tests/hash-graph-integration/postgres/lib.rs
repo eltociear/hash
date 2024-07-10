@@ -63,7 +63,9 @@ use graph::{
 };
 use graph_types::{
     account::AccountId,
-    knowledge::entity::{Entity, EntityId},
+    knowledge::entity::{
+        ActorType, Entity, EntityId, OriginProvenance, OriginType, ProvidedEntityEditionProvenance,
+    },
     ontology::{
         DataTypeMetadata, EntityTypeMetadata, OntologyTemporalMetadata,
         OntologyTypeClassificationMetadata, PropertyTypeMetadata,
@@ -85,6 +87,54 @@ pub struct DatabaseTestWrapper<A: AuthorizationApi> {
 pub struct DatabaseApi<'pool, A: AuthorizationApi> {
     store: PostgresStore<Transaction<'pool>, A>,
     account_id: AccountId,
+}
+
+/// Creates a provenance entry for ontology types which can be used in tests.
+///
+/// # Panics
+///
+/// Panics if the version of the package is not a valid semantic version.
+#[must_use]
+pub fn ontology_provenance() -> ProvidedOntologyEditionProvenance {
+    ProvidedOntologyEditionProvenance {
+        actor_type: ActorType::Machine,
+        origin: OriginProvenance {
+            ty: OriginType::Api,
+            id: Some(env!("CARGO_PKG_NAME").to_owned()),
+            version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            semantic_version: Some(env!("CARGO_PKG_VERSION").parse().expect("invalid version")),
+            environment: None,
+            device_id: None,
+            session_id: None,
+            api_key_public_id: None,
+            user_agent: None,
+        },
+        sources: Vec::new(),
+    }
+}
+
+/// Creates a provenance entry for entities which can be used in tests.
+///
+/// # Panics
+///
+/// Panics if the version of the package is not a valid semantic version.
+#[must_use]
+pub fn entity_provenance() -> ProvidedEntityEditionProvenance {
+    ProvidedEntityEditionProvenance {
+        actor_type: ActorType::Machine,
+        origin: OriginProvenance {
+            ty: OriginType::Api,
+            id: Some(env!("CARGO_PKG_NAME").to_owned()),
+            version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            semantic_version: Some(env!("CARGO_PKG_VERSION").parse().expect("invalid version")),
+            environment: None,
+            device_id: None,
+            session_id: None,
+            api_key_public_id: None,
+            user_agent: None,
+        },
+        sources: Vec::new(),
+    }
 }
 
 const fn data_type_relationships() -> [DataTypeRelationAndSubject; 1] {
@@ -225,7 +275,7 @@ impl<A: AuthorizationApi> DatabaseTestWrapper<A> {
                         },
                         relationships: data_type_relationships(),
                         conflict_behavior: ConflictBehavior::Skip,
-                        provenance: ProvidedOntologyEditionProvenance::default(),
+                        provenance: ontology_provenance(),
                     }
                 }),
             )
@@ -244,7 +294,7 @@ impl<A: AuthorizationApi> DatabaseTestWrapper<A> {
                         },
                         relationships: property_type_relationships(),
                         conflict_behavior: ConflictBehavior::Skip,
-                        provenance: ProvidedOntologyEditionProvenance::default(),
+                        provenance: ontology_provenance(),
                     }
                 }),
             )
@@ -265,7 +315,7 @@ impl<A: AuthorizationApi> DatabaseTestWrapper<A> {
                         icon: None,
                         relationships: entity_type_relationships(),
                         conflict_behavior: ConflictBehavior::Skip,
-                        provenance: ProvidedOntologyEditionProvenance::default(),
+                        provenance: ontology_provenance(),
                     }
                 }),
             )

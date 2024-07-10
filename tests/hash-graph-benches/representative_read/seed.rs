@@ -11,16 +11,15 @@ use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     account::AccountId,
     knowledge::{
-        entity::{EntityUuid, ProvidedEntityEditionProvenance},
-        link::LinkData,
-        PropertyObject, PropertyProvenance, PropertyWithMetadataObject,
+        entity::EntityUuid, link::LinkData, PropertyObject, PropertyProvenance,
+        PropertyWithMetadataObject,
     },
     owned_by_id::OwnedById,
 };
 use type_system::{url::VersionedUrl, EntityType};
 use uuid::Uuid;
 
-use crate::util::{seed, StoreWrapper};
+use crate::util::{entity_provenance, seed, StoreWrapper};
 
 // SEE: This is quite temporary at the moment. We'll want a lot more variation, a greater
 //  quantity of types, increased number of versions, etc.
@@ -182,7 +181,7 @@ async fn seed_db<A: AuthorizationApi>(account_id: AccountId, store_wrapper: &mut
                     link_data: None,
                     draft: false,
                     relationships: [],
-                    provenance: ProvidedEntityEditionProvenance::default(),
+                    provenance: entity_provenance(),
                 })
                 .take(quantity)
                 .collect(),
@@ -226,7 +225,7 @@ async fn seed_db<A: AuthorizationApi>(account_id: AccountId, store_wrapper: &mut
                         }),
                         draft: false,
                         relationships: [],
-                        provenance: ProvidedEntityEditionProvenance::default(),
+                        provenance: entity_provenance(),
                     })
                     .collect(),
             )

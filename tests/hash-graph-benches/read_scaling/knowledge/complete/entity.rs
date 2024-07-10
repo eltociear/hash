@@ -23,9 +23,8 @@ use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
     account::AccountId,
     knowledge::{
-        entity::{Entity, ProvidedEntityEditionProvenance},
-        link::LinkData,
-        PropertyObject, PropertyProvenance, PropertyWithMetadataObject,
+        entity::Entity, link::LinkData, PropertyObject, PropertyProvenance,
+        PropertyWithMetadataObject,
     },
     owned_by_id::OwnedById,
 };
@@ -35,7 +34,7 @@ use tokio::runtime::Runtime;
 use type_system::EntityType;
 use uuid::Uuid;
 
-use crate::util::{seed, setup, setup_subscriber, Store, StoreWrapper};
+use crate::util::{entity_provenance, seed, setup, setup_subscriber, Store, StoreWrapper};
 
 const DB_NAME: &str = "entity_scale";
 
@@ -130,7 +129,7 @@ async fn seed_db<A: AuthorizationApi>(
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             })
             .take(total)
             .collect(),
@@ -165,7 +164,7 @@ async fn seed_db<A: AuthorizationApi>(
                         }),
                         draft: false,
                         relationships: [],
-                        provenance: ProvidedEntityEditionProvenance::default(),
+                        provenance: entity_provenance(),
                     })
                 })
                 .collect(),

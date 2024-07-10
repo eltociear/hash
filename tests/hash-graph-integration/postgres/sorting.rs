@@ -15,17 +15,14 @@ use graph::{
 };
 use graph_test_data::{data_type, entity, entity_type, property_type};
 use graph_types::{
-    knowledge::{
-        entity::{EntityUuid, ProvidedEntityEditionProvenance},
-        PropertyObject, PropertyWithMetadataObject,
-    },
+    knowledge::{entity::EntityUuid, PropertyObject, PropertyWithMetadataObject},
     owned_by_id::OwnedById,
 };
 use pretty_assertions::assert_eq;
 use type_system::url::{BaseUrl, OntologyTypeVersion, VersionedUrl};
 use uuid::Uuid;
 
-use crate::{DatabaseApi, DatabaseTestWrapper};
+use crate::{entity_provenance, DatabaseApi, DatabaseTestWrapper};
 
 async fn test_root_sorting_chunked<const N: usize, const M: usize, A: AuthorizationApi>(
     api: &DatabaseApi<'_, A>,
@@ -174,7 +171,7 @@ async fn insert<A: AuthorizationApi>(
                 link_data: None,
                 draft: false,
                 relationships: [],
-                provenance: ProvidedEntityEditionProvenance::default(),
+                provenance: entity_provenance(),
             },
         )
         .await
