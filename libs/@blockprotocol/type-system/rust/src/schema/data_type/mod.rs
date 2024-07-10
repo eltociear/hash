@@ -12,11 +12,13 @@ mod reference;
 mod validation;
 
 use core::fmt;
+use std::collections::HashSet;
 
 use error_stack::Report;
 use regex::Regex;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value as JsonValue;
+use thiserror::Error;
 
 use crate::{
     schema::data_type::constraint::{extend_report, ConstraintError, StringFormat},
@@ -88,6 +90,8 @@ pub struct DataType {
     pub description: Option<String>,
     pub label: DataTypeLabel,
 
+    pub all_of: HashSet<DataTypeReference>,
+
     // constraints for any types
     pub json_type: JsonSchemaValueType,
     pub const_value: Option<JsonValue>,
@@ -105,6 +109,43 @@ pub struct DataType {
     pub max_length: Option<usize>,
     pub pattern: Option<Regex>,
     pub format: Option<StringFormat>,
+}
+
+/// Depending on how two data types are merged, a different conflict behavior is applied.
+///
+/// When a data type is extending two other data types, the order of the data types being extended
+/// can affect the final data type. If the data types being extended have conflicting constraints,
+/// the first data type will take precedence. Because of this, all parents needs to be combined
+/// first before the child data type is created.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ExtensionBehavior {
+    Parent,
+    Sibling,
+}
+
+#[derive(Debug, Error)]
+pub enum DataTypeExtensionError {
+    #[error("The data types have conflicting types: {child} and {parent}")]
+    TypeMismatch {
+        child: JsonSchemaValueType,
+        parent: JsonSchemaValueType,
+    },
+    #[error("The data types have conflicting `const` values: `{child}` and `{parent}`")]
+    ConstMismatch { child: JsonValue, parent: JsonValue },
+    #[error("The data types have non-overlapping `enum` values`")]
+    EnumMismatch {
+        child: Vec<JsonValue>,
+        parent: Vec<JsonValue>,
+    },
+    #[error("The data types have conflicting `multipleOf` values: `{child}` and `{parent}`")]
+    MultipleOfMismatch { child: f64, parent: f64 },
+    #[error("The data types have conflicting `pattern` values: `{child}` and `{parent}`")]
+    PatternMismatch { child: Regex, parent: Regex },
+    #[error("The data types have conflicting `format` values: `{child}` and `{parent}`")]
+    FormatMismatch {
+        child: StringFormat,
+        parent: StringFormat,
+    },
 }
 
 impl DataType {
@@ -308,5 +349,75 @@ mod tests {
             ),
             &"additional end content: .5",
         );
+    }
+
+    mod extend {
+        use super::*;
+        use crate::{
+            utils::tests::{ensure_validation, ensure_validation_from_str},
+            Validator,
+        };
+
+        #[tokio::test]
+        async fn extend_integer() {
+            let number = ensure_validation_from_str::<DataType, _>(
+                graph_test_data::data_type::NUMBER_V1,
+                DataTypeValidator,
+                JsonEqualityCheck::Yes,
+            )
+            .await
+            .into_inner();
+            let mut integer = ensure_validation::<DataType, _>(
+                json!({
+                  "$schema": "https://blockprotocol.org/types/modules/graph/0.3/schema/data-type",
+                  "kind": "dataType",
+                  "$id": "https://blockprotocol.org/@blockprotocol/types/data-type/integer/v/1",
+                  "title": "Integer",
+                  "description": "A whole number",
+                  "type": "integer"
+                }),
+                DataTypeValidator,
+                JsonEqualityCheck::Yes,
+            )
+            .await
+            .into_inner();
+
+            integer.extend(number).expect("failed to extend");
+
+            DataTypeValidator
+                .validate_ref(&integer)
+                .await
+                .expect("failed to validate");
+        }
+
+        #[tokio::test]
+        async fn extend_const() {
+            let empty_list = ensure_validation_from_str::<DataType, _>(
+                graph_test_data::data_type::EMPTY_LIST_V1,
+                DataTypeValidator,
+                JsonEqualityCheck::Yes,
+            )
+            .await
+            .into_inner();
+
+            let mut other_list = ensure_validation::<DataType, _>(
+                json!({
+                  "$schema": "https://blockprotocol.org/types/modules/graph/0.3/schema/data-type",
+                  "kind": "dataType",
+                  "$id": "https://blockprotocol.org/@blockprotocol/types/data-type/other-list/v/1",
+                  "title": "Other list",
+                  "description": "[42]",
+                  "type": "array",
+                  "const": [42]
+                }),
+                DataTypeValidator,
+                JsonEqualityCheck::Yes,
+            )
+            .await
+            .into_inner();
+
+            let _ = other_list.extend(empty_list).expect_err("failed to extend");
+            // assert_eq!(ser)
+        }
     }
 }

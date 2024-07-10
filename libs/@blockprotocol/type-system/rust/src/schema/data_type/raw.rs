@@ -1,4 +1,5 @@
 use alloc::borrow::Cow;
+use std::collections::HashSet;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -9,7 +10,7 @@ use tsify::Tsify;
 use crate::{
     schema::{
         data_type::{constraint::StringFormat, DataTypeLabel},
-        JsonSchemaValueType,
+        DataTypeReference, JsonSchemaValueType,
     },
     url::VersionedUrl,
 };
@@ -49,6 +50,13 @@ pub struct DataType<'a> {
     pub title: Cow<'a, str>,
     #[serde(default, skip_serializing_if = "Option::is_none", borrow = "'a")]
     pub description: Option<Cow<'a, str>>,
+
+    #[cfg_attr(
+        target_arch = "wasm32",
+        tsify(type = "[DataTypeReference, ...DataTypeReference[]]")
+    )]
+    #[serde(default, skip_serializing_if = "HashSet::is_empty", borrow = "'a")]
+    pub all_of: Cow<'a, HashSet<DataTypeReference>>,
 
     #[serde(
         default,
@@ -112,6 +120,7 @@ impl<'a> From<&'a super::DataType> for DataType<'a> {
             id: Cow::Borrowed(&data_type.id),
             title: Cow::Borrowed(&data_type.title),
             description: data_type.description.as_deref().map(Cow::Borrowed),
+            all_of: Cow::Borrowed(&data_type.all_of),
             label: Cow::Borrowed(&data_type.label),
             json_type: data_type.json_type,
             const_value: data_type.const_value.as_ref().map(Cow::Borrowed),
@@ -135,6 +144,7 @@ impl From<DataType<'_>> for super::DataType {
             id: data_type_repr.id.into_owned(),
             title: data_type_repr.title.into_owned(),
             description: data_type_repr.description.map(Cow::into_owned),
+            all_of: data_type_repr.all_of.into_owned(),
             label: data_type_repr.label.into_owned(),
             json_type: data_type_repr.json_type,
             const_value: data_type_repr.const_value.map(Cow::into_owned),

@@ -1,10 +1,18 @@
+use std::collections::HashSet;
+
+use error_stack::Report;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::schema::{
-    data_type::constraint::StringFormat, DataType, DataTypeLabel, JsonSchemaValueType,
+    data_type::{
+        constraint::{extend_report, StringFormat},
+        DataTypeExtensionError,
+    },
+    DataType, DataTypeLabel, JsonSchemaValueType,
 };
+use crate::schema::data_type::ExtensionBehavior;
 
 #[expect(
     clippy::trivially_copy_pass_by_ref,
@@ -24,7 +32,7 @@ pub struct ClosedDataType {
     // constraints for any types
     #[serde(rename = "type")]
     #[cfg_attr(target_arch = "wasm32", tsify(type = "[JsonSchemaValueType]"))]
-    pub json_type: Vec<JsonSchemaValueType>,
+    pub json_type: HashSet<JsonSchemaValueType>,
     #[serde(rename = "enum", default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(target_arch = "wasm32", tsify(type = "[JsonValue, ...JsonValue[]]"))]
     pub enum_values: Vec<JsonValue>,
@@ -79,6 +87,185 @@ impl ClosedDataType {
             pattern: data_type.pattern.map(|x| vec![x]).unwrap_or_default(),
             format: data_type.format,
         }
+    }
+
+    /// Extends the current data type with the given data type.
+    ///
+    ///  
+    pub fn extend(&mut self, mut other: DataType) -> Result<(), Report<DataTypeExtensionError>> {
+        let mut result = Ok::<_, Report<DataTypeExtensionError>>(());
+
+        match (self.json_type, other.json_type) {
+            (child, parent) if child == parent => {}
+            (JsonSchemaValueType::Integer, JsonSchemaValueType::Number)
+            | (JsonSchemaValueType::Number, JsonSchemaValueType::Integer) => {}
+            (child, parent) => {
+                extend_report!(
+                    result,
+                    DataTypeExtensionError::TypeMismatch { child, parent }
+                );
+            }
+        }
+
+        let mut new_const_value = None;
+        match (&self.const_value, other.const_value) {
+            (None, Some(parent)) => {
+                new_const_value = Some(parent);
+            }
+            (Some(child), Some(parent)) if *child != parent => {
+                extend_report!(
+                    result,
+                    DataTypeExtensionError::ConstMismatch {
+                        child: child.clone(),
+                        parent
+                    }
+                );
+            }
+            _ => {}
+        }
+
+        let mut new_enum_values = Vec::new();
+        if !other.enum_values.is_empty() {
+            if self.enum_values.is_empty() {
+                new_enum_values = other.enum_values;
+            } else {
+                for value in &self.enum_values {
+                    if let Some(index) = other.enum_values.iter().position(|v| v == value) {
+                        // In validation we ensure that no duplicates are present, so we can
+                        // safely remove the value from the other enum values
+                        new_enum_values.push(other.enum_values.swap_remove(index));
+                    }
+                }
+            }
+        }
+
+        let mut new_multiple_of = None;
+        match (self.multiple_of, other.multiple_of) {
+            (None, Some(parent)) => {
+                new_multiple_of = Some(parent);
+            }
+            (Some(child), Some(parent))
+                if (child % parent > f64::EPSILON) && (parent % child > f64::EPSILON) =>
+            {
+                extend_report!(
+                    result,
+                    DataTypeExtensionError::MultipleOfMismatch { child, parent }
+                );
+            }
+            _ => {}
+        }
+
+        let mut new_maximum = None;
+        match (self.maximum, other.maximum) {
+            (None, Some(parent)) => {
+                new_maximum = Some(parent);
+            }
+            (Some(child), Some(parent)) if parent < child => {
+                new_maximum = Some(parent);
+            }
+            _ => {}
+        }
+
+        let mut new_minimum = None;
+        match (self.minimum, other.minimum) {
+            (None, Some(parent)) => {
+                new_minimum = Some(parent);
+            }
+            (Some(child), Some(parent)) if parent > child => {
+                new_minimum = Some(parent);
+            }
+            _ => {}
+        }
+
+        let mut new_max_length = None;
+        match (self.max_length, other.max_length) {
+            (None, Some(parent)) => {
+                new_max_length = Some(parent);
+            }
+            (Some(child), Some(parent)) if parent < child => {
+                new_max_length = Some(parent);
+            }
+            _ => {}
+        }
+
+        let mut new_min_length = None;
+        match (self.min_length, other.min_length) {
+            (None, Some(parent)) => {
+                new_min_length = Some(parent);
+            }
+            (Some(child), Some(parent)) if parent > child => {
+                new_min_length = Some(parent);
+            }
+            _ => {}
+        }
+
+        let mut new_pattern = None;
+        match (&self.pattern, other.pattern) {
+            (None, Some(parent)) => {
+                new_pattern = Some(parent);
+            }
+            (Some(child), Some(parent)) if child.as_str() != parent.as_str() => {
+                extend_report!(
+                    result,
+                    DataTypeExtensionError::PatternMismatch {
+                        child: child.clone(),
+                        parent
+                    }
+                );
+            }
+            _ => {}
+        }
+
+        let mut new_format = None;
+        match (&self.format, other.format) {
+            (None, Some(parent)) => {
+                new_format = Some(parent);
+            }
+            (Some(child), Some(parent)) if *child != parent => {
+                extend_report!(
+                    result,
+                    DataTypeExtensionError::FormatMismatch {
+                        child: *child,
+                        parent
+                    }
+                );
+            }
+            _ => {}
+        }
+
+        // Make sure we don't overwrite the result if we have an error
+        result?;
+
+        if let Some(const_value) = new_const_value {
+            self.const_value = Some(const_value);
+        }
+        if !new_enum_values.is_empty() {
+            self.enum_values = new_enum_values;
+        }
+        if let Some(multiple_of) = new_multiple_of {
+            self.multiple_of = Some(multiple_of);
+        }
+        if let Some(maximum) = new_maximum {
+            self.maximum = Some(maximum);
+        }
+        self.exclusive_maximum = self.exclusive_maximum || other.exclusive_maximum;
+        if let Some(minimum) = new_minimum {
+            self.minimum = Some(minimum);
+        }
+        self.exclusive_minimum = self.exclusive_minimum || other.exclusive_minimum;
+        if let Some(max_length) = new_max_length {
+            self.max_length = Some(max_length);
+        }
+        if let Some(min_length) = new_min_length {
+            self.min_length = Some(min_length);
+        }
+        if let Some(pattern) = new_pattern {
+            self.pattern = Some(pattern);
+        }
+        if let Some(format) = new_format {
+            self.format = Some(format);
+        }
+        Ok(())
     }
 }
 

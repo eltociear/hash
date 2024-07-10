@@ -1,4 +1,5 @@
 use core::{
+    fmt,
     net::{Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
@@ -49,6 +50,12 @@ impl StringFormat {
             Self::DateTime => "date-time",
             Self::Duration => "duration",
         }
+    }
+}
+
+impl fmt::Display for StringFormat {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.write_str(self.as_str())
     }
 }
 
